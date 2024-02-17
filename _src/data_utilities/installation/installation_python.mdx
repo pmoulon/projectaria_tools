@@ -1,0 +1,86 @@
+---
+sidebar_position: 20
+title: Python Package Installation
+---
+
+# How to Install the Python Package for Project Aria Tools
+
+This page provides information about how to install the Python utilities using a virtual environment or from source. We recommend that only advanced users install from source.
+For details on the python type hinting, please refer to [python type hinting page](/docs/data_utilities/installation/type_hinting)
+
+## Install via virtual environment
+### Step 1 : Install Python
+
+To use the Jupyter notebooks featured in our documentation you'll need Python 3.9 or above. To ensure all utilities work effectively, we recommend keeping Python 3 up to date.
+* [Python 3 download page](https://www.python.org/downloads/)
+* To check what what version of Python 3 you have use `python3 --version`
+
+### Step 2 : Create a virtual environment
+
+```bash
+rm -rf $HOME/projectaria_tools_python_env
+
+python3 -m venv $HOME/projectaria_tools_python_env
+
+source $HOME/projectaria_tools_python_env/bin/activate
+```
+
+###  Step 3 : Install the required Python packages
+
+```bash
+pip3 install --upgrade pip
+
+pip3 install projectaria-tools'[all]'
+```
+### Step 4 : Verify installation
+
+Verify the Python package installed correctly by running through the two example tutorials in Jupyter notebook.
+
+```bash
+cd $HOME/Documents/projectaria_sandbox
+
+# Basic VRS data access tutorial
+jupyter notebook projectaria_tools/core/examples/dataprovider_quickstart_tutorial.ipynb
+
+# Machine Perception Service (MPS) tutorial
+jupyter notebook projectaria_tools/core/examples/mps_quickstart_tutorial.ipynb
+```
+
+:::tip Python Module Error?
+Check the [Python module import error](/docs/data_utilities/installation/troubleshooting#python-module-import-error) section of [Data Utilities Troubleshooting Guide](/docs/data_utilities/installation/troubleshooting) if you encounter this issue
+:::
+
+## Building Python bindings from source (advanced user)
+You'll need to install C++ dependencies to build Python bindings from source.
+
+1. Go to the [C++ Installation page](/docs/data_utilities/installation/installation_cpp) and follow the instructions to [install dependencies](/docs/data_utilities/installation/installation_cpp)
+2. Go to the projectaria_tools code folder
+3. Enter the following commands
+```bash
+cd $HOME/Documents/projectaria_sandbox/projectaria_tools
+
+pip3 install --upgrade pip
+
+pip3 install .
+```
+
+:::info
+For multithread build use the following:
+- `CMAKE_BUILD_PARALLEL_LEVEL=4 pip3 install .`
+
+If you encounter error during the build process like `ERROR: No matching distribution found for library X`:
+- Double check that you are using the right pip, or python version and then use `python -m pip install .` or `python3 -m pip install .`
+:::
+
+## Generate and install type hinting from source (advanced user)
+1. Install pybind11-stubgen to generate the stub files
+2. Generate python type hinting with generate_stubs.py script once projectaria_tools package is installed
+3. Install type hinting package for projectaria_tools
+```bash
+pip3 install pybind11-stubgen==1.1
+
+cd $HOME/Documents/projectaria_sandbox/projectaria_tools
+python3 generate_stubs.py
+cp -r projectaria_tools-stubs/projectaria_tools .
+pip3 install .
+```

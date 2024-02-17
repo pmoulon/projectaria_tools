@@ -1,0 +1,28 @@
+---
+sidebar_position: 30
+title: Export VRS to MP4 (Python)
+---
+
+# Export a VRS file to MP4
+
+The `vrs_to_mp4` script enables you to create an MP4 video from a Project Aria VRS recording.
+By default, it uses RGB as well as audio streams (if present).
+The MP4 video will have the same framerate as the RGB stream in the VRS file and use H264 and MP3 stereo encoding for video and audio.
+If a dropped frame is present in the VRS recording (some frame could be missing at a given expected timestamp), the last valid frame will be copied over until the next valid frame.
+
+:::info vrs_to_mp4 generates a recording preview
+
+This script provides video preview. It is not designed to create a video file suitable for Computer Vision applications.
+:::
+
+## Install dependencies
+
+```bash
+pip install projectaria_tools moviepy
+```
+
+## Usage
+
+```bash
+vrs_to_mp4 --vrs "projectaria_tools/data/mps_sample/sample.vrs" --output_video "sample.mp4"
+```

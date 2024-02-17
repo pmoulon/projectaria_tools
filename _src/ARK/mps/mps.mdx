@@ -1,0 +1,51 @@
+---
+sidebar_position: 10
+title: Machine Perception Services (MPS)
+---
+
+# Project Aria Machine Perception Services
+
+To accelerate research with Project Aria, we provide several Spatial AI machine perception capabilities that form the foundation for the future Contextualized AI applications and analysis of the egocentric data. These capabilities are powered by a set of proprietary machine perception algorithms designed for Project Aria glasses and provide superior accuracy and robustness on recorded data compared to off-the-shelf open source algorithms.
+
+All MPS functionalities are offered as post-processing of VRS files via a cloud service. Use the [Desktop App](/docs/ARK/desktop_companion_app), to [request](/docs/ARK/mps/request_mps) derived data from any VRS file that contains necessary sensor's data.
+
+## Current MPS offerings
+The following MPS can be requested via the Aria Desktop app for data you've recorded with a Project Aria device, as long as the data has been recorded with a compatible Recording Profile. The [Recording Profile Guide](/docs/ARK/glasses_manual/profile_guide) provides a quick list of compatible sensor profiles or go to [Recording Profiles](/docs/tech_spec/recording_profiles) in Technical Specifications for more granular information about each profile.
+
+
+### 6DoF trajectory
+MPS provides two types of high frequency (1kHz) trajectories
+* [Open loop trajectory](/docs/data_formats/mps/mps_trajectory#open-loop-trajectory) that is a local odometry estimation from visual-inertial odometry (VIO)
+* [Closed loop trajectory](/docs/data_formats/mps/mps_trajectory#closed-loop-trajectory) that is created via batch optimization, using multi-sensors' input (SLAM, IMU, barometer, Wi-Fi and GPS), fully optimized and providing poses in a consistent frame of reference.
+
+Request trajectory (location data) in the Desktop app to get these outputs, the [recording profile](/docs/tech_spec/recording_profiles) must have SLAM cameras + IMU enabled.
+
+
+### Online sensor calibration
+The [time-varying intrinsic and extrinsic calibrations](/docs/data_formats/mps/mps_trajectory#online-calibration) of cameras and IMUs are estimated at the frequency of SLAM cameras by our multi-sensor state estimation pipeline.
+
+Request trajectory (location data) in the Desktop app to get these outputs, the [recording profile](/docs/tech_spec/recording_profiles) must have SLAM cameras + IMU enabled.
+
+
+### Semi-dense point cloud
+
+[Semi-dense point cloud](/docs/data_formats/mps/mps_pointcloud) data supports researchers who need static scene 3D reconstructions, reliable 2D images tracks or a representative visualization of the environment.
+
+In the Desktop app, this can be requested as an addition to trajectory (location) derived data and has the same recording profile requirements.
+
+
+### Eye gaze data
+Eye gaze is the most important indicator of human’s attention, [eye gaze direction](/docs/data_formats/mps/mps_eye_gaze) estimation with uncertainty is provided by MPS. Eye gaze estimation uses the data from the Eye Tracking (ET) cameras.
+
+
+Request Eye Gaze data in the Desktop app to get these outputs, for any recording that had [ET cameras enabled](/docs/tech_spec/recording_profiles).
+
+If you have made a recording with [In-Session Eye Gaze Calibration](/docs/ARK/mps/eye_gaze_calibration), you will receive a second .csv file with calibrated eye gaze outputs.
+
+
+## About MPS Data Loader APIs
+Please refer to our [MPS data loader APIs](/docs/data_utilities/core_code_snippets/mps#load-mps-output) (C++ and Python support) to load the MPS outputs into your application. Additionally, the [visualization guide](/docs/data_utilities/visualization/visualization_cpp#mps-static-scene-visualizer) shows how to run our rich visualization tools to visualize all the MPS outputs.
+
+## Questions & Feedback
+
+If you have feedback you'd like to provide about overall trends and experiences or improvement ideas we'd love to hear from you. Please email [AriaOps@meta.com](mailto:AriaOps@meta.com) or post to the Project Aria Academic Partner Feedback and Support group.
