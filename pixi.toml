@@ -17,7 +17,7 @@ clean = "rm -rf ./build ./wheels .projectaria_tools.egg-info/"
 
 #
 # C++ - BUILD and TEST
-prepare = "cmake -G 'Ninja' -B build -S . -DBUILD_UNIT_TEST=ON"
+prepare = "cmake -GNinja -B build -S . -DBUILD_UNIT_TEST=ON"
 build = "cmake --build build --target all"
 test = "cd build; ctest -j"
 
