@@ -1,0 +1,60 @@
+name: Build and Test - Pixi
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build projectaria_tools on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, macos-14] # macos-14 is macSilicon
+    steps:
+      - name : Setup repo
+        uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+
+      - name : Remove Mono framework
+        if: runner.os == 'macOS'
+        run:
+          sudo rm -rf /Library/Frameworks/Mono.framework
+          sudo pkgutil --forget com.xamarin.mono-MDK.pkg
+          sudo rm /etc/paths.d/mono-commands
+
+      - name : Setup pixi
+        uses: prefix-dev/setup-pixi@v0.5.1
+        with:
+          pixi-version: v0.13.0
+          cache: false
+
+      - name: C++ - Build and Test
+        run: pixi run run_c
+
+      - name: Python - Build and Test
+        run: pixi run run_python
+
+      - name: Test Python Notebooks
+        shell: pixi run bash {0}
+        run: |
+          cd core/examples
+          # Installing dependencies
+          pip3 install jupyter matplotlib tqdm pillow
+          # Running the notebooks
+          jupyter nbconvert --execute --inplace dataprovider_quickstart_tutorial.ipynb
+
+          # Install additional required dependencies
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            sudo apt-get install -y curl unzip
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            brew install curl unzip
+          else
+            echo "$RUNNER_OS not supported"
+            exit 1
+          fi
+          pip3 install plotly
+          jupyter nbconvert --execute --inplace mps_quickstart_tutorial.ipynb
