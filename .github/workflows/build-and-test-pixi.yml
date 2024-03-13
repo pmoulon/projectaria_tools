@@ -58,3 +58,10 @@ jobs:
           fi
           pip3 install plotly
           jupyter nbconvert --execute --inplace mps_quickstart_tutorial.ipynb
+
+      - name : Test python viewers
+        shell: pixi run bash {0}
+        run: |
+          rerun analytics disable
+          viewer_aria_sensors --vrs ./data/mps_sample/sample.vrs
+          viewer_mps --vrs ./data/mps_sample/sample.vrs --mps_folder ./data/mps_sample/
