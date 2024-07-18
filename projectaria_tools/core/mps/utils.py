@@ -21,7 +21,9 @@ from _core_pybinds.mps import (
     EyeGaze,
     get_eyegaze_point_at_depth,
     GlobalPointPosition,
+    hand_tracking,
 )
+from _core_pybinds.sophus import SE3
 
 
 def bisection_timestamp_search(timed_data, query_timestamp_ns: int) -> int:
@@ -76,6 +78,21 @@ def get_nearest_pose(
     return mps_trajectory[bisection_index]
 
 
+def get_nearest_wrist_and_palm_pose(
+    wirst_and_palm_poses: List[hand_tracking.WristAndPalmPose], query_timestamp_ns: int
+) -> hand_tracking.WristAndPalmPose:
+    """
+    Helper function to get nearest wrist and palm pose for a timestamp (ns)
+    Return the closest or equal timestamp wrist and palm pose that can be found, returns None if not found (out of time range)
+    """
+    bisection_index = bisection_timestamp_search(
+        wirst_and_palm_poses, query_timestamp_ns
+    )
+    if bisection_index is None:
+        return None
+    return wirst_and_palm_poses[bisection_index]
+
+
 def filter_points_from_confidence(
     raw_points: List[GlobalPointPosition],
     threshold_invdep: float = 0.001,
@@ -117,6 +134,7 @@ def get_gaze_vector_reprojection(
     device_calibration: DeviceCalibration,
     camera_calibration: CameraCalibration,
     depth_m: float = 1.0,
+    make_upright: bool = False,
 ) -> np.ndarray:
     """
     Helper function to project a eye gaze output onto a given image and its calibration, assuming specified fixed depth
@@ -124,7 +142,25 @@ def get_gaze_vector_reprojection(
     gaze_center_in_cpf = get_eyegaze_point_at_depth(
         eye_gaze.yaw, eye_gaze.pitch, depth_m
     )
-    transform_cpf_sensor = device_calibration.get_transform_cpf_sensor(stream_id_label)
-    gaze_center_in_camera = transform_cpf_sensor.inverse() @ gaze_center_in_cpf
+    # these changes are needed to ensure gaze projections are always using CAD extrinsics
+    transform_device_cpf_cad = (
+        device_calibration.get_transform_device_cpf()
+    )  # this is always CAD
+    transform_device_camera_cad = device_calibration.get_transform_device_sensor(
+        stream_id_label, True
+    )  # this will ensure T_device_camera is CAD value
+    # if we want to project on an upright image we will rotate T_device_camera by 90deg cw
+    if make_upright:
+        transform_camera_cw90 = SE3.from_matrix(
+            np.array([[0, 1, 0, 0], [-1, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+        )
+        transform_device_camera_cad = (
+            transform_device_camera_cad @ transform_camera_cw90
+        )
+    transform_camera_cpf_cad = (
+        transform_device_camera_cad.inverse() @ transform_device_cpf_cad
+    )
+
+    gaze_center_in_camera = transform_camera_cpf_cad @ gaze_center_in_cpf
     gaze_center_in_pixels = camera_calibration.project(gaze_center_in_camera)
     return gaze_center_in_pixels

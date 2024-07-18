@@ -14,3 +14,5 @@
 
 message("--- Compiling samples.")
 add_subdirectory(pointcloud_colorization)
+
+add_subdirectory(vrs_mutation)

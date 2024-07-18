@@ -80,6 +80,13 @@ class Uploader(RunnerWithProgress):
             logging.getLogger(__name__), {"vrs": str(input_path)}
         )
 
+    @classmethod
+    @final
+    def get_key(cls, input_path: Path, input_hash: str, http_helper) -> str:
+        """Get a unique key for this Runner instance"""
+        # We only need the file hash
+        return input_hash
+
     @final
     @retry(
         exceptions=[
@@ -92,10 +99,12 @@ class Uploader(RunnerWithProgress):
         interval=config.getfloat(ConfigSection.UPLOAD, ConfigKey.INTERVAL),
         backoff=config.getfloat(ConfigSection.UPLOAD, ConfigKey.BACKOFF),
     )
-    async def run(self) -> int:
+    async def _run(self) -> int:
         """
         Upload the file to the MPS server
         """
+        # Limit the number of concurrent uploads per file
+
         async with Uploader.semaphore_:
             rec_fbid: int = await check_if_already_uploaded(
                 self._input_hash, self._http_helper
@@ -169,7 +178,8 @@ class Uploader(RunnerWithProgress):
                     # Chunk size is calculated based on the smoothed speed of the last few chunks
                     # The chunk size is capped between min_chunk_size and max_chunk_size
                     chunk_size = min(
-                        max_chunk_size, max(min_chunk_size, int(median(chunk_sizes)))
+                        max_chunk_size,
+                        max(min_chunk_size, int(median(chunk_sizes))),
                     )
                     self._processed += len(chunk)
                     self._logger.info(
@@ -177,6 +187,11 @@ class Uploader(RunnerWithProgress):
                     )
             self._logger.info("Finished uploading")
             return int(response["id"])
+
+    async def _upload(self) -> int:
+        """
+        Actual upload implementation
+        """
 
     async def _fetch_offset(self, upload_url: str):
         """

@@ -24,6 +24,7 @@
 
 #include "EyeGazeFormat.h"
 #include "GlobalPointCloudFormat.h"
+#include "HandTrackingFormat.h"
 #include "MpsDataPathsFormat.h"
 #include "OnlineCalibrationFormat.h"
 #include "PointObservationFormat.h"
@@ -32,6 +33,7 @@
 
 #include "EyeGazeReader.h"
 #include "GlobalPointCloudReader.h"
+#include "HandTrackingReader.h"
 #include "MpsDataPathsProvider.h"
 #include "MpsDataProvider.h"
 #include "OnlineCalibrationsReader.h"
@@ -47,6 +49,21 @@ namespace projectaria::tools::mps {
 void exportMps(py::module& m) {
   // For submodule documentation, see: projectaria_tools/projectaria_tools/core/mps.py
 
+  // gaze vergence fields
+  py::class_<EyeGazeVergence>(m, "EyeGazeVergence")
+      .def_readwrite("left_yaw", &EyeGazeVergence::left_yaw)
+      .def_readwrite("right_yaw", &EyeGazeVergence::right_yaw)
+      .def_readwrite("left_yaw_low", &EyeGazeVergence::left_yaw_low)
+      .def_readwrite("right_yaw_low", &EyeGazeVergence::right_yaw_low)
+      .def_readwrite("left_yaw_high", &EyeGazeVergence::left_yaw_high)
+      .def_readwrite("right_yaw_high", &EyeGazeVergence::right_yaw_high)
+      .def_readwrite("tx_left_eye", &EyeGazeVergence::tx_left_eye)
+      .def_readwrite("ty_left_eye", &EyeGazeVergence::ty_left_eye)
+      .def_readwrite("tz_left_eye", &EyeGazeVergence::tz_left_eye)
+      .def_readwrite("tx_right_eye", &EyeGazeVergence::tx_right_eye)
+      .def_readwrite("ty_right_eye", &EyeGazeVergence::ty_right_eye)
+      .def_readwrite("tz_right_eye", &EyeGazeVergence::tz_right_eye);
+
   // gaze
   py::class_<EyeGaze>(m, "EyeGaze", "An object representing single Eye gaze output.")
       .def_readwrite(
@@ -55,6 +72,10 @@ void exportMps(py::module& m) {
           "Timestamp of the eye tracking camera frame in device time domain.")
       .def_readwrite(
           "yaw", &EyeGaze::yaw, "Eye gaze yaw angle (horizontal) in radians in CPF frame.")
+      .def_readwrite(
+          "vergence",
+          &EyeGaze::vergence,
+          "Additional fields related to vergence (new model output).")
       .def_readwrite(
           "pitch", &EyeGaze::pitch, "Eye gaze pitch angle (vertical) in radians in CPF frame.")
       .def_readwrite(
@@ -105,6 +126,48 @@ void exportMps(py::module& m) {
   yaw_rads: Yaw angle in radians in CPF frame.
   pitch_rads: Pitch angle in radians in CPF frame.
   depth_m: Depth of the point in meters.
+  )docdelimiter");
+
+  m.def(
+      "get_gaze_intersection_point",
+      &getGazeIntersectionPoint,
+      py::arg("left_yaw_rads"),
+      py::arg("right_yaw_rads"),
+      py::arg("pitch_rads"),
+      R"docdelimiter( Given the left and right yaw angles and common pitch get the intersection point in 3D in CPF frame.
+  Parameters
+  __________
+  left_yaw_rads: Left Yaw angle in radians in CPF frame.
+  right_yaw_rads: Right Yaw angle in radians in CPF frame.
+  pitch_rads: Pitch angle in radians in CPF frame.
+  )docdelimiter");
+
+  m.def(
+      "compute_depth_and_combined_gaze_direction",
+      &computeDepthAndCombinedGazeDirection,
+      py::arg("left_yaw_rads"),
+      py::arg("right_yaw_rads"),
+      py::arg("pitch_rads"),
+      R"docdelimiter( Given the left and right yaw angles and common pitch get the combined gaze angles and depth in CPF frame.
+  Parameters
+  __________
+  left_yaw_rads: Left Yaw angle in radians in CPF frame.
+  right_yaw_rads: Right Yaw angle in radians in CPF frame.
+  pitch_rads: Pitch angle in radians in CPF frame.
+  )docdelimiter");
+
+  m.def(
+      "get_gaze_vectors",
+      &getGazeVectors,
+      py::arg("left_yaw_rads"),
+      py::arg("right_yaw_rads"),
+      py::arg("pitch_rads"),
+      R"docdelimiter( Given the left and right yaw angles and common pitch get the left and right gaze vectors from their respective origins in XYZ CPF frame.
+  Parameters
+  __________
+  left_yaw_rads: Left Yaw angle in radians in CPF frame.
+  right_yaw_rads: Right Yaw angle in radians in CPF frame.
+  pitch_rads: Pitch angle in radians in CPF frame.
   )docdelimiter");
 
   // trajectory
@@ -381,6 +444,10 @@ void exportMps(py::module& m) {
           "end_frame_idx",
           &StaticCameraCalibration::endFrameIdx,
           "The end frame number from the video when the camera is stationary and camera pose result is applicable. Not available, when the pose is applicable to the whole video")
+      .def_readwrite(
+          "quality",
+          &StaticCameraCalibration::quality,
+          "Quality of the reloc. -1 means no quality information available, 1 means good quality, 0 means bad quality")
       .def("__repr__", [](const StaticCameraCalibration& self) { return fmt::to_string(self); });
 
   m.def(
@@ -396,8 +463,10 @@ void exportMps(py::module& m) {
   // MPS data paths provider
   py::class_<MpsDataPaths>(
       m, "MpsDataPaths", "A struct that includes the file paths of all MPS data for a sequence.")
+      .def(py::init<>())
       .def_readwrite("slam", &MpsDataPaths::slam, "MPS SLAM file paths")
       .def_readwrite("eyegaze", &MpsDataPaths::eyegaze, "MPS eyegaze file paths")
+      .def_readwrite("hand_tracking", &MpsDataPaths::handTracking, "MPS hand tracking file paths")
       .def_readwrite("root", &MpsDataPaths::root, "MPS root directory path")
       .def("__repr__", [](MpsDataPaths const& self) { return fmt::to_string(self); });
 
@@ -437,6 +506,15 @@ void exportMps(py::module& m) {
           "Personalized (calibrated) eyegaze results")
       .def_readwrite("summary", &MpsEyegazeDataPaths::summary, "Eyegaze summary")
       .def("__repr__", [](MpsEyegazeDataPaths const& self) { return fmt::to_string(self); });
+
+  py::class_<HandTrackingDataPaths>(
+      m,
+      "HandTrackingDataPaths",
+      "A struct that includes the file paths of all MPS Hand Tracking data for a VRS sequence processed by MPS.")
+      .def_readwrite(
+          "wrist_and_palm_poses", &HandTrackingDataPaths::wristAndPalmPoses, "Wrist and palm poses")
+      .def_readwrite("summary", &HandTrackingDataPaths::summary, "Hand Tracking summary")
+      .def("__repr__", [](HandTrackingDataPaths const& self) { return fmt::to_string(self); });
 
   py::class_<MpsDataPathsProvider>(
       m,
@@ -483,6 +561,10 @@ void exportMps(py::module& m) {
           &MpsDataProvider::hasSemidenseObservations,
           "Check if semidense observations are available in the MPS data paths")
       .def(
+          "has_wrist_and_palm_poses",
+          &MpsDataProvider::hasWristAndPalmPoses,
+          "Check if wrist and palm poses are available in the MPS data paths")
+      .def(
           "get_general_eyegaze",
           &MpsDataProvider::getGeneralEyeGaze,
           "Query MPS for general EyeGaze at a specific timestamp. This will throw an exception if "
@@ -514,6 +596,7 @@ void exportMps(py::module& m) {
           "first using `has_closed_loop_poses()`",
           py::arg("device_timestamp_ns"),
           py::arg("time_query_options") = TimeQueryOptions::Closest)
+      // TODO: add get_interpolated_closed_loop_pose
       .def(
           "get_online_calibration",
           &MpsDataProvider::getOnlineCalibration,
@@ -533,7 +616,63 @@ void exportMps(py::module& m) {
           &MpsDataProvider::getSemidenseObservations,
           py::return_value_policy::reference_internal,
           "Get the MPS point observations. This will throw an exception if the observations are "
-          "not available. Check for data availability first using 'has_semidense_observations()'");
+          "not available. Check for data availability first using 'has_semidense_observations()'")
+      .def(
+          "get_wrist_and_palm_pose",
+          &MpsDataProvider::getWristAndPalmPose,
+          py::return_value_policy::reference_internal,
+          "Get the MPS wrist and palm pose. This will throw an exception if the wrist and palm "
+          "poses are not available. Check for data availability first using "
+          "'has_wrist_and_palm_poses()'");
+
+  py::module hand_tracking = m.def_submodule("hand_tracking");
+
+  py::class_<WristAndPalmPose>(
+      hand_tracking,
+      "WristAndPalmPose",
+      "An object representing WristAndPalmPose output at a single timestamp.")
+      .def_readwrite(
+          "tracking_timestamp",
+          &WristAndPalmPose::trackingTimestamp,
+          "The timestamp of the pose estimate in device time domain.")
+      .def_readwrite(
+          "left_hand",
+          &WristAndPalmPose::leftHand,
+          "Left hand pose estimate, or None if no valid pose was found.")
+      .def_readwrite(
+          "right_hand",
+          &WristAndPalmPose::rightHand,
+          "Right hand pose estimate, or None if no valid pose was found.")
+      .def("__repr__", [](WristAndPalmPose const& self) { return fmt::to_string(self); });
+
+  py::class_<WristAndPalmPose::OneSide>(
+      hand_tracking,
+      "WristAndPalmPose.OneSide",
+      "An object representing WristAndPalmPose output for one side of the body.")
+      .def_readwrite(
+          "confidence",
+          &WristAndPalmPose::OneSide::confidence,
+          "Tracking confidence score for this hand.")
+      .def_readwrite(
+          "wrist_position_device",
+          &WristAndPalmPose::OneSide::wristPosition_device,
+          "Position of the wrist joint in device frame.")
+      .def_readwrite(
+          "palm_position_device",
+          &WristAndPalmPose::OneSide::palmPosition_device,
+          "Position of the palm joint in device frame.")
+      .def("__repr__", [](WristAndPalmPose::OneSide const& self) { return fmt::to_string(self); });
+
+  hand_tracking.def(
+      "read_wrist_and_palm_poses",
+      &readWristAndPalmPoses,
+      "path"_a,
+      R"docdelimiter(Read Wrist and Palm poses from the hand tracking output generated via MPS.
+  Parameters
+  __________
+  path: Path to the wrist and palm poses csv file.
+
+  )docdelimiter");
 }
 
 } // namespace projectaria::tools::mps

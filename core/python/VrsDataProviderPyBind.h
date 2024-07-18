@@ -23,6 +23,11 @@
 #include <pybind11/stl.h>
 #include "SensorDataSequence.h"
 
+#define DEFAULT_LOG_CHANNEL "VrsDataProvider"
+#include <logging/Log.h>
+
+#include <sstream>
+
 namespace projectaria::tools::data_provider {
 
 namespace py = pybind11;
@@ -152,7 +157,63 @@ inline void declareDeliverQueued(py::module& m) {
       .def(py::init<VrsDataProvider*, const DeliverQueuedOptions&>());
 }
 
+inline std::string timeSyncModeStr(const MetadataTimeSyncMode& timeSyncMode) {
+  std::string timeSyncModeStr;
+  switch (timeSyncMode) {
+    case MetadataTimeSyncMode::NotEnabled:
+      timeSyncModeStr = "NotEnabled";
+      break;
+    case MetadataTimeSyncMode::Timecode:
+      timeSyncModeStr = "Timecode";
+      break;
+    case MetadataTimeSyncMode::Ntp:
+      timeSyncModeStr = "Ntp";
+      break;
+    case MetadataTimeSyncMode::TicSyncClient:
+      timeSyncModeStr = "TicSyncClient";
+      break;
+    case MetadataTimeSyncMode::TicSyncServer:
+      timeSyncModeStr = "TicSyncServer";
+      break;
+    default:
+      XR_LOGE("Unknown time sync mode: {}", int(timeSyncMode));
+      break;
+  }
+  return timeSyncModeStr;
+}
+
 inline void declareVrsDataProvider(py::module& m) {
+  py::enum_<MetadataTimeSyncMode>(m, "MetadataTimeSyncMode")
+      .value("NotEnabled", MetadataTimeSyncMode::NotEnabled)
+      .value("Timecode", MetadataTimeSyncMode::Timecode)
+      .value("Ntp", MetadataTimeSyncMode::Ntp)
+      .value("TicSyncClient", MetadataTimeSyncMode::TicSyncClient)
+      .value("TicSyncServer", MetadataTimeSyncMode::TicSyncServer);
+  py::class_<VrsMetadata>(m, "VrsMetadata")
+      .def(py::init<>())
+      .def(
+          "__repr__",
+          [](const VrsMetadata& self) {
+            std::ostringstream result;
+            result << "{device_serial: \"" << self.deviceSerial << "\", shared_session_id: \""
+                   << self.sharedSessionId << "\", recording_profile: \"" << self.recordingProfile
+                   << "\", time_sync_mode: " << "MetadataTimeSyncMode."
+                   << timeSyncModeStr(self.timeSyncMode) << ", device_id: \"" << self.deviceId
+                   << "\", filename: \"" << self.filename
+                   << "\", start_time_epoch_sec: " << self.startTimeEpochSec
+                   << ", end_time_epoch_sec: " << self.endTimeEpochSec
+                   << ", duration_sec: " << self.durationSec << "}";
+            return result.str();
+          })
+      .def_readonly("device_serial", &VrsMetadata::deviceSerial)
+      .def_readonly("shared_session_id", &VrsMetadata::sharedSessionId)
+      .def_readonly("recording_profile", &VrsMetadata::recordingProfile)
+      .def_readonly("time_sync_mode", &VrsMetadata::timeSyncMode)
+      .def_readonly("device_id", &VrsMetadata::deviceId)
+      .def_readonly("filename", &VrsMetadata::filename)
+      .def_readonly("start_time_epoch_sec", &VrsMetadata::startTimeEpochSec)
+      .def_readonly("end_time_epoch_sec", &VrsMetadata::endTimeEpochSec)
+      .def_readonly("duration_sec", &VrsMetadata::durationSec);
   py::class_<VrsDataProvider, std::shared_ptr<VrsDataProvider>>(
       m,
       "VrsDataProvider",
@@ -160,7 +221,7 @@ inline void declareVrsDataProvider(py::module& m) {
       .def(py::init<
            const std::shared_ptr<RecordReaderInterface>&,
            const std::shared_ptr<StreamIdConfigurationMapper>&,
-           const std::shared_ptr<TimeCodeMapper>&,
+           const std::shared_ptr<TimeSyncMapper>&,
            const std::shared_ptr<StreamIdLabelMapper>&,
            const std::optional<calibration::DeviceCalibration>&>())
       .def(
@@ -170,6 +231,18 @@ inline void declareVrsDataProvider(py::module& m) {
             return std::vector<vrs::StreamId>{streams.begin(), streams.end()};
           },
           "Get all available streams from the vrs file.")
+      .def(
+          "get_file_tags",
+          [](const VrsDataProvider& self) { return self.getFileTags(); },
+          "Get the tags map from the vrs file.")
+      .def(
+          "get_metadata",
+          &VrsDataProvider::getMetadata,
+          "Get metadata if the loaded file is a VRS file.")
+      .def(
+          "get_time_sync_mode",
+          &VrsDataProvider::getTimeSyncMode,
+          "Get time-sync mode if the loaded file is a VRS file.")
       .def(
           "get_sensor_data_type",
           &VrsDataProvider::getSensorDataType,
@@ -316,6 +389,18 @@ inline void declareVrsDataProvider(py::module& m) {
           &VrsDataProvider::convertFromDeviceTimeToTimeCodeNs,
           py::arg("device_time_ns"),
           "Convert DEVICE_TIME timestamp into TIME_CODE in nanoseconds.")
+      .def(
+          "convert_from_device_time_to_synctime_ns",
+          &VrsDataProvider::convertFromDeviceTimeToSyncTimeNs,
+          py::arg("device_time_ns"),
+          py::arg("mode"),
+          "Convert DeviceTime timestamp into synchronized timestamp in nanoseconds.")
+      .def(
+          "convert_from_synctime_to_device_time_ns",
+          &VrsDataProvider::convertFromSyncTimeToDeviceTimeNs,
+          py::arg("sync_time_ns"),
+          py::arg("mode"),
+          "Convert sync timestamp into synchronized timestamp in nanoseconds.")
 
       /* Get data configuration*/
       .def("get_image_configuration", &VrsDataProvider::getImageConfiguration, py::arg("stream_id"))

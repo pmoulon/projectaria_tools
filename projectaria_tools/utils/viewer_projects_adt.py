@@ -13,17 +13,15 @@
 # limitations under the License.
 
 import argparse
-
 from math import tan
 from typing import Dict, Set
 
 import numpy as np
 import rerun as rr
+from PIL import Image
 
 from projectaria_tools.core.mps.utils import get_gaze_vector_reprojection
-
 from projectaria_tools.core.sophus import SE3
-
 from projectaria_tools.core.stream_id import StreamId
 from projectaria_tools.projects.adt import (
     AriaDigitalTwinDataPathsProvider,
@@ -32,6 +30,10 @@ from projectaria_tools.projects.adt import (
     bbox3d_to_line_coordinates,
     DYNAMIC,
     STATIC,
+)
+from projectaria_tools.utils.calibration_utils import (
+    rotate_upright_image_and_calibration,
+    undistort_image_and_calibration,
 )
 from projectaria_tools.utils.rerun_helpers import AriaGlassesOutline, ToTransform3D
 from tqdm import tqdm
@@ -46,17 +48,21 @@ def parse_args():
         help="path to the ADT sequence",
     )
     parser.add_argument(
-        "--device_number",
-        type=int,
-        default=0,
-        help="Device_number you want to visualize, default is 0",
+        "--no_rotate_image_upright",
+        action="store_true",
+        help="If set, the RGB images are shown in their original orientation, which is rotated 90 degrees ccw from upright.",
     )
+    parser.add_argument(
+        "--no_undistort_image",
+        action="store_true",
+        help="If set, the RGB images will not be undistorted.",
+    )
+
     # Add options that does not show by default, but still accessible for debugging purpose
     parser.add_argument(
         "--down_sampling_factor", type=int, default=4, help=argparse.SUPPRESS
     )
     parser.add_argument("--jpeg_quality", type=int, default=75, help=argparse.SUPPRESS)
-
     # If this path is set, we will save the rerun (.rrd) file to the given path
     parser.add_argument(
         "--rrd_output_path", type=str, default="", help=argparse.SUPPRESS
@@ -70,7 +76,7 @@ def main():
     print("sequence_path: ", args.sequence_path)
     try:
         paths_provider = AriaDigitalTwinDataPathsProvider(args.sequence_path)
-        data_paths = paths_provider.get_datapaths_by_device_num(args.device_number)
+        data_paths = paths_provider.get_datapaths()
         gt_provider = AriaDigitalTwinDataProvider(data_paths)
     except Exception as e:
         print("Error: ", str(e))
@@ -92,15 +98,10 @@ def main():
 
     # get all available skeletons in a sequence
     skeleton_ids = gt_provider.get_skeleton_ids()
-    device_serial_numbers = paths_provider.get_device_serial_numbers()
     for skeleton_id in skeleton_ids:
         skeleton_info = gt_provider.get_instance_info_by_id(skeleton_id)
-        is_skeleton_displayed = (
-            skeleton_info.associated_device_serial
-            == device_serial_numbers[args.device_number]
-        )
         print(
-            f"skeleton (id: {skeleton_id} name: {skeleton_info.name}) wears {skeleton_info.associated_device_serial} - Wearing glasses: {is_skeleton_displayed}"
+            f"skeleton (id: {skeleton_id} name: {skeleton_info.name}) wears {skeleton_info.associated_device_serial}"
         )
 
     # Initializing Rerun viewer
@@ -121,8 +122,14 @@ def main():
         "world/device/rgb",
         rr.Pinhole(
             resolution=[
-                rgb_camera_calibration.get_image_size()[0] / args.down_sampling_factor,
-                rgb_camera_calibration.get_image_size()[1] / args.down_sampling_factor,
+                int(
+                    rgb_camera_calibration.get_image_size()[0]
+                    / args.down_sampling_factor
+                ),
+                int(
+                    rgb_camera_calibration.get_image_size()[1]
+                    / args.down_sampling_factor
+                ),
             ],
             focal_length=float(
                 rgb_camera_calibration.get_focal_lengths()[0]
@@ -131,6 +138,7 @@ def main():
         ),
         timeless=True,
     )
+
     # Log Aria Glasses outline
     raw_data_provider_ptr = gt_provider.raw_data_provider_ptr()
     device_calibration = raw_data_provider_ptr.get_device_calibration()
@@ -155,15 +163,37 @@ def main():
             timestamp_ns, rgb_stream_id
         )
 
-        if args.down_sampling_factor > 1:
-            img = image_with_dt.data().to_numpy_array()[
-                :: args.down_sampling_factor, :: args.down_sampling_factor
-            ]
-            # Note: We configure the QUEUE to return only RGB image, so we are sure this image is corresponding to a RGB frame
-            rr.log(
-                "world/device/rgb",
-                rr.Image(img).compress(jpeg_quality=args.jpeg_quality),
+        # rescale image
+        image_display = Image.fromarray(image_with_dt.data().to_numpy_array())
+        new_resolution = (
+            rgb_camera_calibration.get_image_size() / args.down_sampling_factor
+        )
+        new_resolution = new_resolution.astype(int)
+        updated_camera_calibration = rgb_camera_calibration.rescale(
+            new_resolution, 1.0 / args.down_sampling_factor
+        )
+        image_display = image_display.resize(new_resolution)
+        image_display = np.array(image_display)
+
+        # rectify image (unless otherwise specified)
+        if not args.no_undistort_image:
+            image_display, updated_camera_calibration = undistort_image_and_calibration(
+                image_display,
+                updated_camera_calibration,
             )
+
+        # rotate image (unless otherwise specified)
+        if not args.no_rotate_image_upright:
+            image_display, updated_camera_calibration = (
+                rotate_upright_image_and_calibration(
+                    image_display, updated_camera_calibration
+                )
+            )
+
+        rr.log(
+            "world/device/rgb/image",
+            rr.Image(image_display).compress(jpeg_quality=args.jpeg_quality),
+        )
 
         # Log skeleton(s)
         for skeleton_id in skeleton_ids:
@@ -194,13 +224,13 @@ def main():
 
         if aria_3d_pose_with_dt.is_valid():
             aria_3d_pose = aria_3d_pose_with_dt.data()
-            device_to_rgb = gt_provider.get_aria_transform_device_camera(rgb_stream_id)
+            T_device_rgb = updated_camera_calibration.get_transform_device_camera()
 
             rr.log(
                 "world/device",
                 ToTransform3D(aria_3d_pose.transform_scene_device, False),
             )
-            rr.log("world/device/rgb", ToTransform3D(device_to_rgb.inverse(), True))
+            rr.log("world/device/rgb", ToTransform3D(T_device_rgb.inverse(), True))
 
             # Log device location
             rr.log(
@@ -236,12 +266,13 @@ def main():
                     eye_gaze,
                     rgb_camera_calibration.get_label(),
                     device_calibration,
-                    rgb_camera_calibration,
+                    updated_camera_calibration,
                     eye_gaze.depth,
+                    not args.no_rotate_image_upright,
                 )
                 rr.log(
                     "world/device/rgb/eye-gaze_projection",
-                    rr.Points2D(gaze_projection / args.down_sampling_factor, radii=4),
+                    rr.Points2D(gaze_projection, radii=4),
                 )
 
         # Log object Bounding Boxes

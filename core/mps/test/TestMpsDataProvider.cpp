@@ -44,6 +44,8 @@ TEST(AeaDataPathsProvider, PathsAPI) {
   EXPECT_TRUE(fs::exists(dataPaths.slam.semidenseObservations));
   EXPECT_TRUE(fs::exists(dataPaths.slam.onlineCalibration));
   EXPECT_TRUE(fs::exists(dataPaths.slam.summary));
+  EXPECT_TRUE(fs::exists(dataPaths.handTracking.wristAndPalmPoses));
+  EXPECT_TRUE(fs::exists(dataPaths.handTracking.summary));
 }
 
 TEST(AeaDataProvider, DataExists) {
@@ -58,6 +60,7 @@ TEST(AeaDataProvider, DataExists) {
   EXPECT_TRUE(dp.hasOnlineCalibrations());
   EXPECT_TRUE(dp.hasSemidensePointCloud());
   EXPECT_TRUE(dp.hasSemidenseObservations());
+  EXPECT_TRUE(dp.hasWristAndPalmPoses());
 }
 
 TEST(AeaDataProvider, DataQuerying) {
@@ -74,10 +77,12 @@ TEST(AeaDataProvider, DataQuerying) {
   auto maybeClosedLoopPose = dp.getClosedLoopPose(0);
   auto maybeEyeGaze = dp.getGeneralEyeGaze(0);
   auto maybeOnlineCalib = dp.getOnlineCalibration(0);
+  auto maybeWristAndPalmPose = dp.getWristAndPalmPose(0);
   EXPECT_TRUE(maybeOpenLoopPose.has_value());
   EXPECT_TRUE(maybeClosedLoopPose.has_value());
   EXPECT_TRUE(maybeEyeGaze.has_value());
   EXPECT_TRUE(maybeOnlineCalib.has_value());
+  EXPECT_TRUE(maybeWristAndPalmPose.has_value());
 
   // check that invalid queries throws an exception
   EXPECT_THROW(dp.getPersonalizedEyeGaze(0), std::runtime_error);
@@ -91,4 +96,28 @@ TEST(AeaDataProvider, DataQuerying) {
   EXPECT_FALSE(maybeClosedLoopPose.has_value());
   EXPECT_FALSE(maybeEyeGaze.has_value());
   EXPECT_FALSE(maybeOnlineCalib.has_value());
+}
+
+TEST(AeaDataProvider, InterpolatedPoseQuerying) {
+  const auto dataPathsProvider = MpsDataPathsProvider(mpsRootFolder);
+  const auto dataPaths = dataPathsProvider.getDataPaths();
+  auto dp = MpsDataProvider(dataPaths);
+  EXPECT_TRUE(dp.hasClosedLoopPoses());
+
+  // Test for case where query before the first timestamp
+  auto maybeOpenLoopPose = dp.getInterpolatedClosedLoopPose(0);
+  EXPECT_FALSE(maybeOpenLoopPose.has_value());
+
+  // Test for case where query after the last timestamp
+  maybeOpenLoopPose = dp.getInterpolatedClosedLoopPose(9999999999 * 1e3);
+  EXPECT_FALSE(maybeOpenLoopPose.has_value());
+
+  // Test for case where query is exactly at one timestamp
+  maybeOpenLoopPose = dp.getInterpolatedClosedLoopPose(149202610 * 1e3);
+  EXPECT_TRUE(maybeOpenLoopPose.has_value());
+  EXPECT_EQ(maybeOpenLoopPose->trackingTimestamp.count(), 149202610);
+  EXPECT_TRUE(maybeOpenLoopPose->deviceLinearVelocity_device.isApprox(
+      Eigen::Vector3d(0.038913, -0.322935, 0.242351), 1e-4));
+
+  // TODO: Test for cases of interpolation between 149203459 ad 149204459
 }

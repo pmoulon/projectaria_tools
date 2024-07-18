@@ -23,8 +23,8 @@
 
 namespace projectaria::dataset::adt {
 
-constexpr int kWindowSizeX{1280};
-constexpr int kWindowSizeY{800};
+constexpr int kWindowSizeX{1100};
+constexpr int kWindowSizeY{1280};
 constexpr double kJointsPointSize{3.0};
 constexpr int kRenderEveryNFrames{3}; // setting this to 3 means we are rendering at 10fps
 
@@ -344,7 +344,7 @@ void AriaDigitalTwinViewer::drawRawImage(
             tan(eyeGaze.yaw) * eyeGaze.depth, tan(eyeGaze.pitch) * eyeGaze.depth, eyeGaze.depth);
         const auto maybeT_Cpf_Camera =
             adtDataProvider_->rawDataProviderPtr()->getDeviceCalibration()->getT_Cpf_Sensor(
-                camModel.getLabel());
+                camModel.getLabel(), true);
 
         if (!maybeT_Cpf_Camera.has_value()) {
           fmt::print("WARNING: T_Cpf_camera not found for {}\n", camModel.getLabel());

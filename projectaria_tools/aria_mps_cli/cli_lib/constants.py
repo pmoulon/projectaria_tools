@@ -20,6 +20,44 @@ CONFIG_DIR: Final[Path] = Path.home().joinpath(".projectaria")
 CONFIG_FILE: Final[Path] = CONFIG_DIR.joinpath("mps.ini")
 AUTH_TOKEN_FILE: Final[Path] = CONFIG_DIR.joinpath("auth_token")
 
+# GraphQL keys
+KEY_ALIAS: Final[str] = "alias"
+KEY_ARIA_MPS_REQUEST: Final[str] = "aria_mps_request"
+KEY_CDN_URL: Final[str] = "cdn_url"
+KEY_CREATE: Final[str] = "create"
+KEY_CREATION_TIME: Final[str] = "creation_time"
+KEY_CURSOR: Final[str] = "cursor"
+KEY_DATA: Final[str] = "data"
+KEY_DOC_ID: Final[str] = "doc_id"
+KEY_END_CURSOR: Final[str] = "end_cursor"
+KEY_ERROR_CODE: Final[str] = "error_code"
+KEY_FEATURES: Final[str] = "features"
+KEY_FEATURE: Final[str] = "feature"
+KEY_FILE_HASHES: Final[str] = "file_hashes"
+KEY_FILE_HASH: Final[str] = "file_hash"
+KEY_HAS_NEXT_PAGE: Final[str] = "has_next_page"
+KEY_ID: Final[str] = "id"
+KEY_INPUT: Final[str] = "input"
+KEY_KEY_ID: Final[str] = "key_id"
+KEY_ME: Final[str] = "me"
+KEY_MPS_RESULTS: Final[str] = "mps_results"
+KEY_NAME: Final[str] = "name"
+KEY_NODES: Final[str] = "nodes"
+KEY_NODE: Final[str] = "node"
+KEY_PAGE_INFO: Final[str] = "page_info"
+KEY_PAGE_SIZE: Final[str] = "page_size"
+KEY_PUBLIC_KEY: Final[str] = "public_key"
+KEY_RECORDINGS: Final[str] = "recordings"
+KEY_REMAINING_TTL: Final[str] = "remaining_ttl"
+KEY_REQUESTS: Final[str] = "requests"
+KEY_REQUEST_ID: Final[str] = "request_id"
+KEY_RESPONSE: Final[str] = "response"
+KEY_RESULT_TYPE: Final[str] = "result_type"
+KEY_SOURCE: Final[str] = "source"
+KEY_STATUS: Final[str] = "status"
+KEY_STATUS_MESSAGE: Final[str] = "status_message"
+KEY_VARIABLES: Final[str] = "variables"
+
 # Common http status codes that should be retried
 HTTP_RETRY_CODES: Final[Sequence[int]] = [
     HTTPStatus.BAD_GATEWAY,
@@ -113,12 +151,12 @@ class ErrorCode:
     GRAPHQL_FAILURE: int = 108
     # Hash computation failed
     HASH_COMPUTATION_FAILURE: int = 109
-    # Existing outputs check failed
-    EXISTING_OUTPUTS_CHECK_FAILURE: int = 110
-    # Existing requests check failed
-    EXISTING_REQUESTS_CHECK_FAILURE: int = 111
-    # Existing recording check failed
-    EXISTING_RECORDING_CHECK_FAILURE: int = 112
+    # Past outputs check failed
+    PAST_OUTPUT_CHECK_FAILURE: int = 110
+    # Past requests check failed
+    PAST_REQUEST_CHECK_FAILURE: int = 111
+    # Past recording check failed
+    PAST_RECORDING_CHECK_FAILURE: int = 112
     # Upload failed
     UPLOAD_FAILURE: int = 113
     # Submit failed

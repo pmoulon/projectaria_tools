@@ -26,7 +26,7 @@
 #include <data_provider/SensorDataSequence.h>
 #include <data_provider/StreamIdConfigurationMapper.h>
 #include <data_provider/StreamIdLabelMapper.h>
-#include <data_provider/TimeCodeMapper.h>
+#include <data_provider/TimeSyncMapper.h>
 #include <data_provider/TimestampIndexMapper.h>
 
 namespace projectaria::tools::data_provider {
@@ -50,6 +50,27 @@ class VrsDataProvider {
    * @return A set of streamIds.
    */
   const std::set<vrs::StreamId> getAllStreams() const;
+
+  /**
+   * @brief Get the tags map for all the underlying files. Does not include any stream tags.
+   * @return The tags map for all underlying files.
+   */
+  std::map<std::string, std::string> getFileTags() const;
+
+  /**
+   * @brief Get a pointer to an instance of VrsMetadata for an underlying VRS file,
+   * if the metadata exists in the file.
+   * The constructor of RecordReaderInterface populates a struct from
+   * file tags.
+   * @return Metadata for the underlying VRS file in an instance of VrsMetadata.
+   */
+  std::optional<VrsMetadata> getMetadata() const;
+
+  /**
+   * @brief The time-sync mode of the recording, if it exists in the file.
+   * @return The time-sync-mode enum value for the recording.
+   */
+  std::optional<MetadataTimeSyncMode> getTimeSyncMode() const;
 
   /**
    * @brief Get SensorDataType from streamId.
@@ -308,6 +329,24 @@ class VrsDataProvider {
    */
   int64_t convertFromDeviceTimeToTimeCodeNs(const int64_t deviceTimeNs) const;
 
+  /**
+   * @brief Convert synchronized timestamp into DeviceTime in nanoseconds.
+   * @param syncTimeNs Synchronized timestamp w.r.t. server timestamp in nanoseconds.
+   * @param mode The TimeSyncMode which supports TicSync and TimeCode features
+   * @return Timestamp in nanosecond from DeviceTime.
+   */
+  int64_t convertFromSyncTimeToDeviceTimeNs(const int64_t syncTimeNs, const TimeSyncMode mode)
+      const;
+
+  /**
+   * @brief Convert DeviceTime timestamp into synchronized timestamp in nanoseconds.
+   * @param syncTimeNs Synchronized timestamp w.r.t. server timestamp in nanoseconds.
+   * @param mode The TimeSyncMode which supports TicSync and TimeCode features
+   * @return Timestamp in nanosecond from synchronized timestamp.
+   */
+  int64_t convertFromDeviceTimeToSyncTimeNs(const int64_t deviceTimeNs, const TimeSyncMode mode)
+      const;
+
   /*
     call the functions below if you know the modality of the streamId
     This avoid conversion among the variant and the specific type, e.g. between SensorData and
@@ -379,7 +418,7 @@ class VrsDataProvider {
   VrsDataProvider(
       const std::shared_ptr<RecordReaderInterface>& interface,
       const std::shared_ptr<StreamIdConfigurationMapper>& configMap,
-      const std::shared_ptr<TimeCodeMapper>& timeCodeMapper,
+      const std::shared_ptr<TimeSyncMapper>& timeSyncMapper,
       const std::shared_ptr<StreamIdLabelMapper>& streamIdLabelMapper,
       const std::optional<calibration::DeviceCalibration>& maybeDeviceCalib);
 
@@ -395,7 +434,7 @@ class VrsDataProvider {
   const std::shared_ptr<RecordReaderInterface> interface_;
   const std::shared_ptr<StreamIdConfigurationMapper> configMap_;
   const std::shared_ptr<TimestampIndexMapper> timeQuery_;
-  const std::shared_ptr<TimeCodeMapper> timeCodeMapper_;
+  const std::shared_ptr<TimeSyncMapper> timeSyncMapper_;
   const std::shared_ptr<StreamIdLabelMapper> streamIdLabelMapper_;
   std::optional<calibration::DeviceCalibration> maybeDeviceCalib_;
 

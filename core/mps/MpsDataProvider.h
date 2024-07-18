@@ -22,6 +22,7 @@
 #include <data_provider/TimeTypes.h>
 #include <mps/EyeGaze.h>
 #include <mps/GlobalPointCloud.h>
+#include <mps/HandTracking.h>
 #include <mps/MpsDataPathsProvider.h>
 #include <mps/OnlineCalibration.h>
 #include <mps/PointObservation.h>
@@ -139,6 +140,15 @@ class MpsDataProvider {
       const TimeQueryOptions& timeQueryOptions = TimeQueryOptions::Closest);
 
   /**
+   * @brief Query MPS for ClosedLoopTrajectoryPose at a specific timestamp, and return interpolated
+   * pose.
+   * @param deviceTimeStampNs The query timestamp in `TimeDomain::DeviceTime`.
+   * @return optional ClosedLoopTrajectoryPose, will return invalid if the query is
+   * out of bound
+   */
+  std::optional<ClosedLoopTrajectoryPose> getInterpolatedClosedLoopPose(int64_t deviceTimeStampNs);
+
+  /**
    * @brief Query MPS for OnlineCalibration at a specific timestamp. This will throw an exception if
    * online calibration data is not available. Check for data availability first using
    * `hasOnlineCalibrations()`
@@ -165,6 +175,25 @@ class MpsDataProvider {
    */
   const PointObservations& getSemidenseObservations();
 
+  /**
+   * @brief Query MPS for WristAndPalmPose at a specific timestamp. This will throw an exception if
+   * WristAndPalmPoses data is not available. Check for data availability first using
+   * `hasWristAndPalmPoses()`
+   * @param deviceTimeStampNs The query timestamp in `TimeDomain::DeviceTime`.
+   * @param timeQueryOptions The options for TimeQuery, one of {BEFORE, AFTER, CLOSEST}. Defaults to
+   * CLOSEST.
+   * @return optional WristAndPalmPose, will return invalid if the query time is invalid
+   */
+  std::optional<WristAndPalmPose> getWristAndPalmPose(
+      int64_t captureTimestampNs,
+      const TimeQueryOptions& timeQueryOptions = TimeQueryOptions::Closest);
+
+  /**
+   * @brief Check if WristAndPalmPoses are available in the MPS data paths
+   * @return true if data is available, false otherwise
+   */
+  bool hasWristAndPalmPoses() const;
+
  private:
   MpsDataPaths dataPaths_;
   std::map<int64_t, EyeGaze> generalEyeGazes_;
@@ -172,6 +201,7 @@ class MpsDataProvider {
   std::map<int64_t, OpenLoopTrajectoryPose> openLoopPoses_;
   std::map<int64_t, ClosedLoopTrajectoryPose> closedLoopPoses_;
   std::map<int64_t, OnlineCalibration> onlineCalibrations_;
+  std::map<int64_t, WristAndPalmPose> wristAndPalmPoses_;
   GlobalPointCloud globalPointCloud_;
   PointObservations pointObservations_;
 };

@@ -16,9 +16,12 @@
 
 #include <data_provider/ErrorHandler.h>
 #include <data_provider/RecordReaderInterface.h>
+#include <sstream>
 
 #define DEFAULT_LOG_CHANNEL "RecordReaderInterface"
 #include <logging/Log.h>
+
+#include <nlohmann/json.hpp>
 
 namespace projectaria::tools::data_provider {
 RecordReaderInterface::RecordReaderInterface(
@@ -31,7 +34,7 @@ RecordReaderInterface::RecordReaderInterface(
     std::map<vrs::StreamId, std::shared_ptr<BarometerPlayer>>& barometerPlayers,
     std::map<vrs::StreamId, std::shared_ptr<BluetoothBeaconPlayer>>& bluetoothPlayers,
     std::map<vrs::StreamId, std::shared_ptr<MotionSensorPlayer>>& magnetometerPlayers,
-    const std::shared_ptr<TimeCodeMapper>& timeCodeMapper)
+    const std::shared_ptr<TimeSyncMapper>& timeSyncMapper)
     : reader_(reader),
       imagePlayers_(imagePlayers),
       motionPlayers_(motionPlayers),
@@ -41,7 +44,7 @@ RecordReaderInterface::RecordReaderInterface(
       barometerPlayers_(barometerPlayers),
       bluetoothPlayers_(bluetoothPlayers),
       magnetometerPlayers_(magnetometerPlayers),
-      timeCodeMapper_(timeCodeMapper),
+      timeSyncMapper_(timeSyncMapper),
       readerMutex_(std::make_unique<std::mutex>()) {
   for (const auto& [streamId, _] : imagePlayers_) {
     streamIds_.insert(streamId);
@@ -88,10 +91,88 @@ RecordReaderInterface::RecordReaderInterface(
     streamIdToCondition_.emplace(streamId, std::make_unique<std::condition_variable>());
     streamIdToLastReadRecord_.emplace(streamId, nullptr);
   }
+  fileTags_ = reader_->getTags();
+  vrsMetadata_ = getMetadata();
 }
 
 std::set<vrs::StreamId> RecordReaderInterface::getStreamIds() const {
   return streamIds_;
+}
+
+std::map<std::string, std::string> RecordReaderInterface::getFileTags() const {
+  return fileTags_;
+}
+
+std::optional<VrsMetadata> RecordReaderInterface::getMetadata() const {
+  // VRS file tags are only available if a VRS file was loaded.
+  if (fileTags_.empty()) {
+    return {};
+  }
+
+  VrsMetadata metadata;
+
+  // Some of our metadata comes from other tags; copy them first.
+  std::string tempKey = "device_serial";
+  if (fileTags_.find(tempKey) != fileTags_.end()) {
+    metadata.deviceSerial = fileTags_.at(tempKey);
+  }
+
+  // No point in going on if there is no metadata tag. If
+  // there is a metadata tag, parse the metadata json.
+  tempKey = "metadata";
+  if (fileTags_.find(tempKey) == fileTags_.end()) {
+    XR_LOGE("Tag 'metadata' was not found in the VRS file tags");
+    return metadata;
+  }
+  auto metadataJson = nlohmann::json::parse(fileTags_.at(tempKey));
+
+  tempKey = "recording_profile";
+  if (metadataJson.contains(tempKey)) {
+    metadata.recordingProfile = metadataJson[tempKey];
+  }
+
+  tempKey = "shared_session_id";
+  if (metadataJson.contains(tempKey)) {
+    metadata.sharedSessionId = metadataJson[tempKey];
+  }
+
+  tempKey = "filename";
+  if (metadataJson.contains(tempKey)) {
+    metadata.filename = metadataJson[tempKey];
+  }
+
+  metadata.timeSyncMode = MetadataTimeSyncMode::NotEnabled;
+  if (metadataJson.contains("ticsync_mode")) {
+    const std::string& ticsyncMode = metadataJson["ticsync_mode"];
+    if (ticsyncMode == "client") {
+      metadata.timeSyncMode = MetadataTimeSyncMode::TicSyncClient;
+    } else if (ticsyncMode == "server") {
+      metadata.timeSyncMode = MetadataTimeSyncMode::TicSyncServer;
+    }
+  } else if (metadataJson.contains("ntp_time_enabled") && metadataJson["ntp_time_enabled"]) {
+    metadata.timeSyncMode = MetadataTimeSyncMode::Ntp;
+  } else if (metadataJson.contains("timecode_enabled") && metadataJson["timecode_enabled"]) {
+    metadata.timeSyncMode = MetadataTimeSyncMode::Timecode;
+  }
+
+  tempKey = "device_id";
+  if (metadataJson.contains(tempKey)) {
+    metadata.deviceId = metadataJson[tempKey];
+  }
+
+  tempKey = "start_time";
+  if (metadataJson.contains(tempKey)) {
+    metadata.startTimeEpochSec = metadataJson[tempKey].get<int64_t>();
+  }
+
+  return metadata;
+}
+
+std::optional<MetadataTimeSyncMode> RecordReaderInterface::getTimeSyncMode() const {
+  if (vrsMetadata_.has_value()) {
+    return vrsMetadata_.value().timeSyncMode;
+  }
+  return {};
 }
 
 SensorDataType RecordReaderInterface::getSensorDataType(const vrs::StreamId& streamId) const {
@@ -172,60 +253,92 @@ SensorData RecordReaderInterface::getLastCachedSensorData(const vrs::StreamId& s
   switch (sensorDataType) {
     case SensorDataType::Image: {
       auto data = getLastCachedImageData(streamId);
-      const int64_t& timeCodeTime =
-          timeCodeMapper_->convertFromDeviceTimeToTimeCodeNs(data.second.captureTimestampNs);
-      return SensorData(streamId, std::move(data), sensorDataType, recordTimeNs, timeCodeTime);
+      std::map<TimeSyncMode, int64_t> timeSyncData;
+      for (const auto& mode : timeSyncMapper_->getTimeSyncModes()) {
+        const int64_t& syncTimeNs = timeSyncMapper_->convertFromDeviceTimeToSyncTimeNs(
+            data.second.captureTimestampNs, mode);
+        timeSyncData.emplace(mode, syncTimeNs);
+      }
+      return SensorData(streamId, std::move(data), sensorDataType, recordTimeNs, timeSyncData);
     }
     case SensorDataType::Imu: {
       auto data = getLastCachedImuData(streamId);
-      const int64_t& timeCodeTime =
-          timeCodeMapper_->convertFromDeviceTimeToTimeCodeNs(data.captureTimestampNs);
-      return SensorData(streamId, std::move(data), sensorDataType, recordTimeNs, timeCodeTime);
+      std::map<TimeSyncMode, int64_t> timeSyncData;
+      for (const auto& mode : timeSyncMapper_->getTimeSyncModes()) {
+        const int64_t& syncTimeNs =
+            timeSyncMapper_->convertFromDeviceTimeToSyncTimeNs(data.captureTimestampNs, mode);
+        timeSyncData.emplace(mode, syncTimeNs);
+      }
+      return SensorData(streamId, std::move(data), sensorDataType, recordTimeNs, timeSyncData);
     }
     case SensorDataType::Audio: {
       auto data = getLastCachedAudioData(streamId);
-      const auto& deviceTime =
-          data.second.captureTimestampsNs.empty() ? -1 : data.second.captureTimestampsNs.back();
-      const int64_t& timeCodeTime = data.second.captureTimestampsNs.empty()
-          ? -1
-          : timeCodeMapper_->convertFromDeviceTimeToTimeCodeNs(deviceTime);
-      return SensorData(streamId, std::move(data), sensorDataType, recordTimeNs, timeCodeTime);
+      if (data.second.captureTimestampsNs.empty()) {
+        return SensorData(streamId, std::move(data), sensorDataType, recordTimeNs, {});
+      }
+      std::map<TimeSyncMode, int64_t> timeSyncData;
+      for (const auto& mode : timeSyncMapper_->getTimeSyncModes()) {
+        const int64_t& syncTimeNs = timeSyncMapper_->convertFromDeviceTimeToSyncTimeNs(
+            data.second.captureTimestampsNs.back(), mode);
+        timeSyncData.emplace(mode, syncTimeNs);
+      }
+      return SensorData(streamId, std::move(data), sensorDataType, recordTimeNs, timeSyncData);
     }
     case SensorDataType::Barometer: {
       auto data = getLastCachedBarometerData(streamId);
-      const int64_t timeCodeTime =
-          timeCodeMapper_->convertFromDeviceTimeToTimeCodeNs(data.captureTimestampNs);
-      return SensorData(streamId, std::move(data), sensorDataType, recordTimeNs, timeCodeTime);
+      std::map<TimeSyncMode, int64_t> timeSyncData;
+      for (const auto& mode : timeSyncMapper_->getTimeSyncModes()) {
+        const int64_t& syncTimeNs =
+            timeSyncMapper_->convertFromDeviceTimeToSyncTimeNs(data.captureTimestampNs, mode);
+        timeSyncData.emplace(mode, syncTimeNs);
+      }
+      return SensorData(streamId, std::move(data), sensorDataType, recordTimeNs, timeSyncData);
     }
     case SensorDataType::Gps: {
       auto data = getLastCachedGpsData(streamId);
-      const int64_t timeCodeTime =
-          timeCodeMapper_->convertFromDeviceTimeToTimeCodeNs(data.captureTimestampNs);
-      return SensorData(streamId, std::move(data), sensorDataType, recordTimeNs, timeCodeTime);
+      std::map<TimeSyncMode, int64_t> timeSyncData;
+      for (const auto& mode : timeSyncMapper_->getTimeSyncModes()) {
+        const int64_t& syncTimeNs =
+            timeSyncMapper_->convertFromDeviceTimeToSyncTimeNs(data.captureTimestampNs, mode);
+        timeSyncData.emplace(mode, syncTimeNs);
+      }
+      return SensorData(streamId, std::move(data), sensorDataType, recordTimeNs, timeSyncData);
     }
     case SensorDataType::Wps: {
       auto data = getLastCachedWpsData(streamId);
-      const int64_t timeCodeTime =
-          timeCodeMapper_->convertFromDeviceTimeToTimeCodeNs(data.boardTimestampNs);
-      return SensorData(streamId, std::move(data), sensorDataType, recordTimeNs, timeCodeTime);
+      std::map<TimeSyncMode, int64_t> timeSyncData;
+      for (const auto& mode : timeSyncMapper_->getTimeSyncModes()) {
+        const int64_t& syncTimeNs =
+            timeSyncMapper_->convertFromDeviceTimeToSyncTimeNs(data.boardTimestampNs, mode);
+        timeSyncData.emplace(mode, syncTimeNs);
+      }
+      return SensorData(streamId, std::move(data), sensorDataType, recordTimeNs, timeSyncData);
     }
     case SensorDataType::Magnetometer: {
       auto data = getLastCachedMagnetometerData(streamId);
-      const int64_t timeCodeTime =
-          timeCodeMapper_->convertFromDeviceTimeToTimeCodeNs(data.captureTimestampNs);
-      return SensorData(streamId, std::move(data), sensorDataType, recordTimeNs, timeCodeTime);
+      std::map<TimeSyncMode, int64_t> timeSyncData;
+      for (const auto& mode : timeSyncMapper_->getTimeSyncModes()) {
+        const int64_t& syncTimeNs =
+            timeSyncMapper_->convertFromDeviceTimeToSyncTimeNs(data.captureTimestampNs, mode);
+        timeSyncData.emplace(mode, syncTimeNs);
+      }
+      return SensorData(streamId, std::move(data), sensorDataType, recordTimeNs, timeSyncData);
     }
     case SensorDataType::Bluetooth: {
       auto data = getLastCachedBluetoothData(streamId);
-      const int64_t timeCodeTime =
-          timeCodeMapper_->convertFromDeviceTimeToTimeCodeNs(data.boardTimestampNs);
-      return SensorData(streamId, std::move(data), sensorDataType, recordTimeNs, timeCodeTime);
+      std::map<TimeSyncMode, int64_t> timeSyncData;
+      for (const auto& mode : timeSyncMapper_->getTimeSyncModes()) {
+        const int64_t& syncTimeNs =
+            timeSyncMapper_->convertFromDeviceTimeToSyncTimeNs(data.boardTimestampNs, mode);
+        timeSyncData.emplace(mode, syncTimeNs);
+      }
+      return SensorData(streamId, std::move(data), sensorDataType, recordTimeNs, timeSyncData);
     }
     case SensorDataType::NotValid:
     default:
       break;
   }
-  return SensorData(streamId, std::monostate{}, SensorDataType::NotValid, -1, -1);
+  return SensorData(streamId, std::monostate{}, SensorDataType::NotValid, -1, {});
 }
 
 ImageDataAndRecord RecordReaderInterface::getLastCachedImageData(const vrs::StreamId& streamId) {

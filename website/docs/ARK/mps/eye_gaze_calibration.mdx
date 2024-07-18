@@ -33,13 +33,11 @@ Every person is unique in terms of how they move their eyes and look at objects,
 
 * [Eye Gaze Data Formats](/data_formats/mps/mps_eye_gaze.mdx)
 * [How to Request MPS](request_mps/mps_cli.mdx)
-* [Recording Profiles That Support MPS](/ARK/glasses_manual/profile_guide.mdx#recording-profiles-that-support-mps)
+* [Recording Profiles](/tech_spec/recording_profiles.mdx)
 * [Machine Perception Services Tutorial](/data_utilities/getting_started.mdx) - includes sample output from a recording where good in-session Eye Gaze Calibration data was collected
 
 :::note
-
 Eye gaze calibration is not the same as Aria device calibration. For information about Aria device calibration, go to [Project Aria Device Calibration](/docs/tech_spec/device_calibration).
-
 :::
 
 ## HW & SW Requirements
@@ -70,18 +68,23 @@ In-Session Eye Gaze Calibration can only be initiated via the Mobile Companion A
 1. In the Mobile Companion app, create a new recording using a profile that includes ET and RGB cameras (such as Profile 15 or 25)
 2. Once your recording has started, close the recording window
     * Select X on the top left of the screen
-3. Go to Device Settings (select the gear next to your glasses)
-![Image of how to find Project Aria glasses' Device Settings page from the Dashboard](/img/ARK/mobile_app_device_settings.png)
+3. Go to Device Settings
+    * Tap the Paired Glasses info card on the Dashboard
 4. Select **Eye Tracking Calibration**
 5. Confirm that you’d like to run it during the current recording session
 6. Follow the prompts to calibrate your glasses
 
+### To view Device Settings
+Tap the paired glasses info card.
+
+<div style={{textAlign: 'center'}}>
+<img width="80%" src={useBaseUrl('/img/ARK/mobile_app_device_settings.png')} alt="Device Settings page from the Dashboard"/>
+</div>
 
 
 ### Multiple Users Within the One Recording
 
 It’s possible for multiple users to do an in-session calibration within the one recording.
-
 
 When a new user gets the glasses, the first thing they should do is the in-session Eye Tracking Calibration.
 

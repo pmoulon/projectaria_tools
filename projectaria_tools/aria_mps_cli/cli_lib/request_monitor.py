@@ -84,7 +84,11 @@ class RequestMonitor(BaseStateMachine):
         )
         self._http_helper = http_helper
 
-    def track_feature_request(self, *args, **kwargs) -> None:
+    def track_feature_request(self, *args, **kwargs) -> "RequestMonitorModel":
+        """
+        Track the status of a feature request by adding a new model to the state machine
+        """
+
         model = RequestMonitorModel(*args, **kwargs, http_helper=self._http_helper)
 
         self.add_model(model)
@@ -92,8 +96,10 @@ class RequestMonitor(BaseStateMachine):
             f"Adding {[r.path.name for r in model._recordings]} to state machine {self.__class__.__name__}"
         )
         self._tasks.append(asyncio.create_task(model.start()))
+        model._task = self._tasks[-1]
 
         logger.debug("Done adding model")
+        return model
 
     def fetch_current_model_states(
         self,
@@ -106,10 +112,19 @@ class RequestMonitor(BaseStateMachine):
         current_states = {}
         for model in self.models:
             for r in model.recordings:
+                r = r.path
                 if r not in current_states:
                     current_states[r] = {}
                 current_states[r][model.feature] = model.get_status(r)
         return current_states
+
+    def get_model_by_request_id(self, request_fbid: int) -> "RequestMonitorModel":
+        """
+        Get the model associated with a given feature request fbid.
+        """
+        return next(
+            (m for m in self.models if m._feature_request.fbid == request_fbid), None
+        )
 
 
 class RequestMonitorModel:
@@ -130,6 +145,7 @@ class RequestMonitorModel:
         self._progress: float = 0.0
         self._error_code: Optional[int] = None
         self._downloaders: Dict[Path, Downloader] = {}
+        self._task: Optional[asyncio.Task] = None
 
     @property
     def feature(self) -> MpsFeature:
@@ -139,11 +155,25 @@ class RequestMonitorModel:
         return self._feature_request.feature
 
     @property
-    def recordings(self) -> Sequence[Path]:
+    def recordings(self) -> Sequence[AriaRecording]:
         """
         All the recordings associated with this feature request
         """
-        return [r.path for r in self._recordings]
+        return self._recordings
+
+    @property
+    def feature_request(self) -> MpsFeatureRequest:
+        """
+        The feature request that was submitted to the server
+        """
+        return self._feature_request
+
+    @property
+    def task(self) -> Optional[asyncio.Task]:
+        """
+        The task associated with this model, if any
+        """
+        return self._task
 
     def get_status(self, recording: Path) -> str:
         """

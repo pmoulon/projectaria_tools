@@ -126,6 +126,7 @@ class MpsFeatureRequest:
     feature: MpsFeature
     status: Status
     results: List[MpsResult]
+    creation_time: int
     status_message: Optional[str] = None
     error_code: Optional[int] = None
 
@@ -141,6 +142,7 @@ class MpsRequest:
 
     fbid: int
     name: str
+    creation_time: int
     features: Dict[MpsFeature, MpsFeatureRequest]
     recordings_fbids: List[int]
 
@@ -155,6 +157,18 @@ class ModelState:
     # Error code is a string for more flexibility.
     error_code: Optional[str] = None
     progress: Optional[float] = None
+
+
+class MpsRequestSource(str, Enum):
+    """
+    Source of the MPS request.
+    """
+
+    def _generate_next_value_(name, start, count, last_values):
+        return name.upper()
+
+    MPS_CLI = auto()
+    ARIA_STUDIO = auto()
 
 
 class EncryptionError(Exception):

@@ -23,6 +23,7 @@
 #include <fstream>
 #include <iterator>
 #include <stdexcept>
+#include <string>
 #include <valarray>
 
 #define RAPIDJSON_NAMESPACE rapidjson
@@ -255,6 +256,8 @@ AriaImageDataWithDt AriaDigitalTwinDataProvider::getAriaImageByTimestampNs(
     return AriaImageDataWithDt();
   }
 
+  checkQueryTimestampBounds(deviceTimeStampNs);
+
   // Get image at timestamp
   ImageDataAndRecord imageData = dataProvider_->getImageDataByTimeNs(
       streamId, deviceTimeStampNs, TimeDomain::DeviceTime, timeQueryOptions);
@@ -328,6 +331,8 @@ Aria3dPoseDataWithDt AriaDigitalTwinDataProvider::getAria3dPoseByTimestampNs(
     return Aria3dPoseDataWithDt();
   }
 
+  checkQueryTimestampBounds(deviceTimeStampNs);
+
   auto queryPoseIter =
       queryMapByTimestamp<Aria3dPose>(aria3dPoses_, deviceTimeStampNs, timeQueryOptions);
 
@@ -345,6 +350,8 @@ BoundingBox3dDataWithDt AriaDigitalTwinDataProvider::getObject3dBoundingBoxesByT
     XR_LOGW("Object 3D poses is empty\n");
     return BoundingBox3dDataWithDt();
   }
+
+  checkQueryTimestampBounds(deviceTimeStampNs);
 
   TypeBoundingBox3dMap object3dBoundingBoxMap;
   // first get all static objects regardless
@@ -386,6 +393,8 @@ BoundingBox2dDataWithDt AriaDigitalTwinDataProvider::getObject2dBoundingBoxesByT
     return BoundingBox2dDataWithDt();
   }
 
+  checkQueryTimestampBounds(deviceTimeStampNs);
+
   auto iter =
       queryMapByTimestamp<TypeBoundingBox2dMap>(cameraBoxes, deviceTimeStampNs, timeQueryOptions);
   if (iter == cameraBoxes.end()) {
@@ -423,6 +432,8 @@ BoundingBox2dDataWithDt AriaDigitalTwinDataProvider::getSkeleton2dBoundingBoxesB
     return BoundingBox2dDataWithDt();
   }
 
+  checkQueryTimestampBounds(deviceTimeStampNs);
+
   auto iter =
       queryMapByTimestamp<TypeBoundingBox2dMap>(cameraBoxes, deviceTimeStampNs, timeQueryOptions);
   if (iter == cameraBoxes.end()) {
@@ -452,6 +463,8 @@ EyeGazeWithDt AriaDigitalTwinDataProvider::getEyeGazeByTimestampNs(
     return EyeGazeWithDt();
   }
 
+  checkQueryTimestampBounds(deviceTimeStampNs);
+
   auto iter = queryMapByTimestamp<EyeGaze>(eyeGazes_, deviceTimeStampNs, timeQueryOptions);
   if (iter == eyeGazes_.end()) {
     XR_LOGW(
@@ -472,6 +485,8 @@ SegmentationDataWithDt AriaDigitalTwinDataProvider::getSegmentationImageByTimest
     XR_LOGW("Segmentations is not available \n");
     return SegmentationDataWithDt();
   }
+
+  checkQueryTimestampBounds(deviceTimeStampNs);
 
   SegmentationData segmentationData;
   int64_t gtTNs = 0;
@@ -506,6 +521,8 @@ DepthDataWithDt AriaDigitalTwinDataProvider::getDepthImageByTimestampNs(
     return DepthDataWithDt();
   }
 
+  checkQueryTimestampBounds(deviceTimeStampNs);
+
   // Depth VRS stream ids are mapped to video VRS using its ImageConfig's Description.
   DepthData depthData;
   int64_t gtTNs = 0;
@@ -537,6 +554,8 @@ SyntheticDataWithDt AriaDigitalTwinDataProvider::getSyntheticImageByTimestampNs(
     XR_LOGW("Synthetic data is empty\n");
     return SyntheticDataWithDt();
   }
+
+  checkQueryTimestampBounds(deviceTimeStampNs);
 
   // Synthetic VRS stream ids should be the same as the video VRS
   SyntheticData syntheticData;
@@ -895,41 +914,22 @@ void AriaDigitalTwinDataProvider::validateDatasetVersion() const {
     throw std::runtime_error{"invalid dataset name"};
   }
 
-  std::string latestVersionStr = kLatestDatasetVersions.at(datasetName_);
-  if (datasetVersion_ == latestVersionStr) {
-    return;
-  }
-
-  // check format
-  auto pos = datasetVersion_.find('.');
-  if (pos == std::string::npos) {
-    const std::string errMsg = fmt::format(
-        "invalid metadata file. version: '{}' is of invalid type, required: XX.XX",
-        datasetVersion_);
-    XR_LOGE("{}", errMsg);
-    throw std::runtime_error{errMsg};
-  }
-
-  // get dataset version release
-  double datasetVersion = std::stod(datasetVersion_);
-
-  // get latest data version
-  double latestVersion = std::stod(latestVersionStr);
+  std::string latestVersion = kLatestDatasetVersions.at(datasetName_);
 
   // check versions
-  if (datasetVersion < latestVersion) {
+  if (datasetVersion_.compare(latestVersion) < 0) {
     XR_LOGW(
         "dataset version read ({}) is not up to date with latest ({}), we recommend you redownload your ADT dataset."
         " For a full version update history, please see the ADT wiki",
         datasetVersion_,
-        latestVersionStr);
+        latestVersion);
     return;
   }
-  if (datasetVersion > latestVersion) {
+  if (datasetVersion_.compare(latestVersion) > 0) {
     XR_LOGE(
         "data loader version ({}) is behind dataset version read ({}), please update projectaria_tools from github.",
         datasetVersion_,
-        latestVersionStr);
+        latestVersion);
     throw std::runtime_error{
         "data loader version is behind dataset version, projectaria_tools needs to be updated"};
   }
@@ -1022,7 +1022,8 @@ void AriaDigitalTwinDataProvider::loadSkeletonInfo() {
 
     // find InstanceInfo for this skeleton
     if (instancesInfo_.find(id) == instancesInfo_.end()) {
-      std::string errMsg = "skeleton ID from metadata file not found in instances file";
+      std::string errMsg =
+          "skeleton ID (" + std::to_string(id) + ") from metadata file not found in instances file";
       XR_LOGE("{}", errMsg);
       throw std::runtime_error{errMsg};
     }
@@ -1071,6 +1072,9 @@ SkeletonFrameWithDt AriaDigitalTwinDataProvider::getSkeletonByTimestampNs(
     XR_LOGW("no skeleton with instance id: {}", instanceId);
     return {};
   }
+
+  checkQueryTimestampBounds(deviceTimeStampNs);
+
   return iter->second.getSkeletonByTimestampNs(deviceTimeStampNs, timeQueryOptions);
 }
 
@@ -1123,6 +1127,23 @@ const AriaDigitalTwinSkeletonProvider& AriaDigitalTwinDataProvider::getSkeletonP
 
 void AriaDigitalTwinDataProvider::loadMps() {
   mps_ = std::make_shared<projectaria::tools::mps::MpsDataProvider>(dataPaths_.mps);
+}
+
+void AriaDigitalTwinDataProvider::checkQueryTimestampBounds(int64_t deviceTimeStampNs) const {
+  // Skip the check if 3D poses do not exist
+  if (!hasAria3dPoses()) {
+    return;
+  }
+
+  int64_t startTimestampNs = getStartTimeNs();
+  int64_t endTimestampNs = getEndTimeNs();
+  if (deviceTimeStampNs < startTimestampNs || deviceTimeStampNs > endTimestampNs) {
+    XR_LOGW(
+        "Query timestamp {} Ns is out of the ground truth data bounds [{}, {}] Ns, be sure to check bounds using the functions getStartTimeNs and getEndTimeNs (c++) or get_start_time_ns and get_end_time_ns (python)",
+        deviceTimeStampNs,
+        startTimestampNs,
+        endTimestampNs);
+  }
 }
 
 Aria3dPoseDataWithDt getInterpolatedAria3dPoseAtTimestampNs(

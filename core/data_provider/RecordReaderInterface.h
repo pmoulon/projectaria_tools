@@ -22,7 +22,8 @@
 #include <set>
 
 #include <data_provider/SensorData.h>
-#include <data_provider/TimeCodeMapper.h>
+#include <data_provider/TimeSyncMapper.h>
+#include <data_provider/VrsMetadata.h>
 #include <vrs/MultiRecordFileReader.h>
 
 namespace projectaria::tools::data_provider {
@@ -42,9 +43,11 @@ class RecordReaderInterface {
       std::map<vrs::StreamId, std::shared_ptr<BarometerPlayer>>& barometerPlayers,
       std::map<vrs::StreamId, std::shared_ptr<BluetoothBeaconPlayer>>& bluetoothPlayers,
       std::map<vrs::StreamId, std::shared_ptr<MotionSensorPlayer>>& magnetometerPlayers,
-      const std::shared_ptr<TimeCodeMapper>& timeCodeMapper);
+      const std::shared_ptr<TimeSyncMapper>& timeSyncMapper);
 
   std::set<vrs::StreamId> getStreamIds() const;
+  [[nodiscard]] std::map<std::string, std::string> getFileTags() const;
+  [[nodiscard]] std::optional<VrsMetadata> getMetadata() const;
   SensorDataType getSensorDataType(const vrs::StreamId& streamId) const;
 
   size_t getNumData(const vrs::StreamId& streamId) const;
@@ -73,11 +76,15 @@ class RecordReaderInterface {
 
   void setReadImageContent(vrs::StreamId streamId, bool readContent);
 
+  [[nodiscard]] std::optional<MetadataTimeSyncMode> getTimeSyncMode() const;
+
  private:
   std::shared_ptr<vrs::MultiRecordFileReader> reader_;
 
   std::set<vrs::StreamId> streamIds_;
   std::map<vrs::StreamId, SensorDataType> streamIdToSensorDataType_;
+  std::map<std::string, std::string> fileTags_;
+  std::optional<VrsMetadata> vrsMetadata_;
 
   std::map<vrs::StreamId, std::shared_ptr<ImageSensorPlayer>> imagePlayers_;
   std::map<vrs::StreamId, std::shared_ptr<MotionSensorPlayer>> motionPlayers_;
@@ -87,7 +94,7 @@ class RecordReaderInterface {
   std::map<vrs::StreamId, std::shared_ptr<BarometerPlayer>> barometerPlayers_;
   std::map<vrs::StreamId, std::shared_ptr<BluetoothBeaconPlayer>> bluetoothPlayers_;
   std::map<vrs::StreamId, std::shared_ptr<MotionSensorPlayer>> magnetometerPlayers_;
-  std::shared_ptr<TimeCodeMapper> timeCodeMapper_;
+  std::shared_ptr<TimeSyncMapper> timeSyncMapper_;
 
   std::unique_ptr<std::mutex> readerMutex_;
   std::map<vrs::StreamId, std::unique_ptr<std::mutex>> streamIdToPlayerMutex_;

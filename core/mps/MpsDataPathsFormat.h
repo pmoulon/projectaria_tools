@@ -29,7 +29,7 @@ struct fmt::formatter<projectaria::tools::mps::MpsEyegazeDataPaths>
   // Format the MpsEyegazeDataPaths object
   template <typename FormatContext>
   auto format(const projectaria::tools::mps::MpsEyegazeDataPaths& paths, FormatContext& ctx) const {
-    return format_to(
+    return fmt::format_to(
         ctx.out(),
         "MPS Eyegaze Data Paths\n--generalEyegaze: {}\n--personalizedEyegaze: {}\n--summary: {}",
         paths.generalEyegaze,
@@ -47,7 +47,7 @@ struct fmt::formatter<projectaria::tools::mps::MpsSlamDataPaths>
   // Format the MpsSlamDataPaths object
   template <typename FormatContext>
   auto format(const projectaria::tools::mps::MpsSlamDataPaths& paths, FormatContext& ctx) const {
-    return format_to(
+    return fmt::format_to(
         ctx.out(),
         "MPS SLAM Data Paths\n--closedLoopTrajectory: {}\n--openLoopTrajectory: {}\n--semidensePoints: {}\n--semidenseObservations: {}\n--onlineCalibration: {}\n--summary: {}",
         paths.closedLoopTrajectory,
@@ -60,6 +60,24 @@ struct fmt::formatter<projectaria::tools::mps::MpsSlamDataPaths>
 };
 
 /*
+ * fmt::format() specialization for HandTrackingDataPaths
+ */
+template <>
+struct fmt::formatter<projectaria::tools::mps::HandTrackingDataPaths>
+    : fmt::formatter<std::string_view> {
+  // Format the HandTrackingDataPaths object
+  template <typename FormatContext>
+  auto format(const projectaria::tools::mps::HandTrackingDataPaths& paths, FormatContext& ctx)
+      const {
+    return fmt::format_to(
+        ctx.out(),
+        "MPS Hand Tracking Data Paths\n--wristAndPalmPoses: {}\n--summary: {}",
+        paths.wristAndPalmPoses,
+        paths.summary);
+  }
+};
+
+/*
  * fmt::format() specialization for MpsDataPaths
  */
 template <>
@@ -67,10 +85,11 @@ struct fmt::formatter<projectaria::tools::mps::MpsDataPaths> : fmt::formatter<st
   // Format the MpsDataPaths object
   template <typename FormatContext>
   auto format(const projectaria::tools::mps::MpsDataPaths& paths, FormatContext& ctx) const {
-    return format_to(
+    return fmt::format_to(
         ctx.out(),
-        "MPS Data Paths\n{}\n{}",
+        "MPS Data Paths\n{}\n{}\n{}",
         fmt::to_string(paths.slam),
-        fmt::to_string(paths.eyegaze));
+        fmt::to_string(paths.eyegaze),
+        fmt::to_string(paths.handTracking));
   }
 };

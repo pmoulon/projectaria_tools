@@ -46,8 +46,8 @@ The codebase is supported on the following platforms:
 - Mac Intel or Mac ARM-based (M1) with MacOS 11 (Big Sur) or newer
 
 ### Software
-* Python 3 with versions >= 3.8.10 and <= 3.11
-  * Python 3.9+ if you want to use the `device_stream` code sample due to the `fastplotlib` dependency
+* Python 3 with versions 3.8.10+
+  * Python 3.9+ if you want to use the `device_stream` code sample due to the `fastplotlib` dependency or if you want to use Jupyter notebooks
   * [Python 3 download page](https://www.python.org/downloads/)
   * To check which version of Python 3 you have, use `python3 --version`
 * [ADB](https://developer.android.com/studio/command-line/adb) (optional)
@@ -58,7 +58,7 @@ The codebase is supported on the following platforms:
 
 ## Environment Setup
 
-## Step 1: Install SDK from PyPi
+## Step 1: Install SDK from PyPI
 
 ### Create a virtual environment
 
@@ -75,7 +75,7 @@ Install `projectaria_client_sdk` with pip
 ```bash
 source ~/venv/bin/activate
 
-python -m pip install projectaria_client_sdk --no-cache-dir
+python3 -m pip install projectaria_client_sdk --no-cache-dir
 ```
 
 
@@ -139,18 +139,16 @@ cd ~/projectaria_client_sdk_samples
 3. Install necessary dependencies:
 
 ```bash
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 ```
 
-Go to [Code Samples](/docs/ARK/sdk/samples/samples.mdx) to explore Aria Client SDK features.
+All code samples can be run from `cd ~/projectaria_client_sdk_samples`, with the exception of the Time Synchronization TICSync code samples. To use TICSync, go to `cd ~/projectaria_client_sdk_samples/ticsync`.
 
-* [Connection](/docs/ARK/sdk/samples/device_connection): connect an Aria device to a computer, fetch the device information and status.
-* [Recording](/docs/ARK/sdk/samples/device_recording): start and stop a recording via USB and Wi-Fi.
-* [Streaming Subscription](/docs/ARK/sdk/samples/streaming_subscribe): subscribe to and unsubscribe from a streaming device
-* [Streaming and Visualizing All Live Sensor Data](/docs/ARK/sdk/samples/device_stream): programmatically start and stop a streaming session, add callbacks to visualize and manipulate the streamed data
-* [Streaming Undistorted RGB Image Using Calibration](/docs/ARK/sdk/samples/undistort_rgb_image): programmatically start and stop a streaming session, access sensor calibration and undistort an RGB live stream
+Go to [Code Samples](/ARK/sdk/samples/samples.mdx) to explore Aria Client SDK features.
 
-Go to [Streaming Internals](/docs/ARK/sdk/concepts/streaming_internals) to understand how streaming works and how to configure your own streaming setup.
+Go to [Streaming Internals](/ARK/sdk/concepts/streaming_internals.mdx) to understand how streaming works and how to configure your own streaming setup.
+
+Go to [Time Synchronization](/ARK/sdk/ticsync.mdx) for how to create recordings with multiple Project Aria glasses.
 
 If you encounter any issues please run `aria-doctor` in a separate terminal or check out [troubleshooting](/docs/ARK/sdk/sdk_troubleshooting).
 
@@ -163,7 +161,6 @@ The Client SDK does not currently support streaming over corporate, university o
 :::
 
 ## Useful Links
-* [Streaming Internals](/docs/ARK/sdk/concepts/streaming_internals)
 * [SDK API Reference](/docs/ARK/sdk/api_reference) - full list of APIs
 * [CLI Command Reference](/docs/ARK/sdk/cli/api_reference)
 * [SDK & CLI Troubleshooting](/docs/ARK/sdk/sdk_troubleshooting)

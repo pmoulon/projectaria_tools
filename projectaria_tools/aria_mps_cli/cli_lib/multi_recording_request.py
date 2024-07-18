@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import argparse
 import asyncio
 import functools
 import glob
@@ -20,7 +19,7 @@ import json
 import logging
 from enum import auto, Enum, unique
 from pathlib import Path
-from typing import Any, Dict, Final, List, Mapping, Optional, Sequence
+from typing import Any, Dict, Final, List, Mapping, Optional, Sequence, Set
 
 from transitions.core import EventData
 
@@ -29,9 +28,8 @@ from .common import Config
 from .constants import ConfigKey, ConfigSection, DisplayStatus, ErrorCode
 from .encryption import VrsEncryptor
 from .hash_calculator import HashCalculator
-from .health_check import is_eligible, run_health_check
+from .health_check import HealthCheckRunner, is_eligible
 from .http_helper import HttpHelper
-from .request_monitor import RequestMonitor
 from .types import (
     AriaRecording,
     EncryptionError,
@@ -39,7 +37,6 @@ from .types import (
     ModelState,
     MpsFeature,
     MpsFeatureRequest,
-    MpsRequest,
     Status,
     VrsHealthCheckError,
 )
@@ -60,46 +57,37 @@ class MultiRecordingRequest(BaseStateMachine):
     @unique
     class States(Enum):
         CREATED = auto()
-        EXISTING_OUTPUTS_CHECK = auto()
+        PAST_OUTPUTS_CHECK = auto()
         HASH_COMPUTATION = auto()
-        EXISTING_REQUESTS_CHECK = auto()
+        PAST_REQUESTS_CHECK = auto()
         VALIDATION = auto()
         UPLOAD = auto()
         SUBMIT = auto()
-        SUCCESS = auto()
+        SUCCESS_PAST_OUTPUT = auto()
+        SUCCESS_NEW_REQUEST = auto()
+        SUCCESS_PAST_REQUEST = auto()
         FAILURE = auto()
 
     TRANSITIONS: Final[List[List[Any]]] = [
         # ["trigger", "source", "dest", "conditions"]
         ["next", "*", States.FAILURE, "has_error"],
         ["start", States.CREATED, States.FAILURE, "has_error"],
-        ["start", States.CREATED, States.EXISTING_OUTPUTS_CHECK],
-        ["next", States.EXISTING_OUTPUTS_CHECK, States.HASH_COMPUTATION],
-        ["next", States.HASH_COMPUTATION, States.EXISTING_REQUESTS_CHECK],
-        ["next", States.EXISTING_REQUESTS_CHECK, States.VALIDATION],
+        ["start", States.CREATED, States.PAST_OUTPUTS_CHECK],
+        ["next", States.PAST_OUTPUTS_CHECK, States.HASH_COMPUTATION],
+        ["next", States.HASH_COMPUTATION, States.PAST_REQUESTS_CHECK],
+        ["next", States.PAST_REQUESTS_CHECK, States.VALIDATION],
         ["next", States.VALIDATION, States.UPLOAD],
-        ["next", States.UPLOAD, States.SUBMIT],
-        [
-            "finish",
-            [
-                States.EXISTING_OUTPUTS_CHECK,
-                States.EXISTING_REQUESTS_CHECK,
-                States.SUBMIT,
-            ],
-            States.SUCCESS,
-        ],
+        ["finish", States.PAST_OUTPUTS_CHECK, States.SUCCESS_PAST_OUTPUT],
+        ["finish", States.PAST_REQUESTS_CHECK, States.SUCCESS_PAST_REQUEST],
+        ["finish", States.UPLOAD, States.SUCCESS_NEW_REQUEST],
     ]
 
     def __init__(
         self,
-        monitor: RequestMonitor,
         http_helper: HttpHelper,
-        cmd_args: argparse.Namespace,
         **kwargs,
     ):
-        self._monitor: RequestMonitor = monitor
         self._http_helper: HttpHelper = http_helper
-        self._cmd_args: argparse.Namespace = cmd_args
         super().__init__(
             states=self.States,
             transitions=self.TRANSITIONS,
@@ -107,7 +95,15 @@ class MultiRecordingRequest(BaseStateMachine):
             **kwargs,
         )
 
-    async def add_new_recordings(self, input_paths: List[Path]) -> None:
+    async def add_new_recordings(
+        self,
+        recordings: Set[Path],
+        output_dir: Path,
+        force: bool,
+        retry_failed: bool,
+        name: Optional[str] = None,
+        suffix: Optional[str] = None,
+    ) -> "MultiRecordingModel":
         """
         Search for all aria recordings recursively in all the input paths and add them
         to the state machine
@@ -117,27 +113,16 @@ class MultiRecordingRequest(BaseStateMachine):
             key_id,
         ) = await self._http_helper.query_encryption_key()
 
-        recordings: List[Path] = []
-        for input_path in input_paths:
-            if input_path.is_file():
-                if input_path.suffix != ".vrs":
-                    raise ValueError(f"Only .vrs file supported: {input_path}")
-                recordings.append(Path(input_path))
-            elif input_path.is_dir():
-                for rec in glob.glob(f"{input_path}/**/*.vrs", recursive=True):
-                    recordings.append(Path(rec))
-            else:
-                raise ValueError(f"Invalid input path: {input_path}")
         model = MultiRecordingModel(
             recordings=recordings,
-            request_monitor=self._monitor,
             http_helper=self._http_helper,
-            force=self._cmd_args.force,
-            suffix=self._cmd_args.suffix,
-            retry_failed=self._cmd_args.retry_failed,
-            output_dir=self._cmd_args.output_dir,
+            force=force,
+            suffix=suffix,
+            retry_failed=retry_failed,
+            output_dir=output_dir,
             encryption_key=encryption_key,
             key_id=key_id,
+            name=name,
         )
 
         self.add_model(model)
@@ -145,8 +130,10 @@ class MultiRecordingRequest(BaseStateMachine):
             f"Adding {model._recordings} to state machine {self.__class__.__name__}"
         )
         self._tasks.append(asyncio.create_task(model.start()))
+        model._task = self._tasks[-1]
 
         logger.debug("Done adding model")
+        return model
 
     def fetch_current_model_states(
         self,
@@ -159,6 +146,7 @@ class MultiRecordingRequest(BaseStateMachine):
         current_states = {}
         for model in self.models:
             for r in model.recordings:
+                r = r.path
                 if r not in current_states:
                     current_states[r] = {}
                 current_states[r][MpsFeature.MULTI_SLAM] = model.get_status(r)
@@ -173,7 +161,6 @@ class MultiRecordingModel:
     def __init__(
         self,
         recordings: List[Path],
-        request_monitor: RequestMonitor,
         http_helper: HttpHelper,
         force: bool,
         suffix: Optional[str],
@@ -181,9 +168,9 @@ class MultiRecordingModel:
         output_dir: Optional[Path],
         encryption_key: str,
         key_id: int,
+        name: Optional[str] = None,
     ) -> None:
         self._feature: MpsFeature = MpsFeature.MULTI_SLAM
-        self._request_monitor: RequestMonitor = request_monitor
         self._http_helper: HttpHelper = http_helper
         self._force: bool = force
         self._suffix: Optional[str] = suffix
@@ -192,10 +179,13 @@ class MultiRecordingModel:
         self._output_dir: Path = output_dir
         self._output_dir.mkdir(parents=True, exist_ok=True)
         self._recordings: List[AriaRecording] = []
+        self._name: Optional[str] = name
 
         self._encryption_key: str = encryption_key
         self._key_id: int = key_id
         self._error_codes: Dict[Path, int] = {}
+        self._feature_request: Optional[MpsFeatureRequest] = None
+        self._task: Optional[asyncio.Task] = None
 
         output_mapping: Mapping[Path, str] = self._load_or_create_output_mapping(
             recordings
@@ -254,11 +244,43 @@ class MultiRecordingModel:
         return output_mapping
 
     @property
-    def recordings(self) -> Sequence[Path]:
+    def name(self) -> Optional[str]:
+        return self._name
+
+    @property
+    def recordings(self) -> Sequence[AriaRecording]:
         """
         All the recordings associated with this feature request
         """
-        return [r.path for r in self._recordings]
+        return self._recordings
+
+    @property
+    def feature_request(self) -> Optional[MpsFeatureRequest]:
+        """
+        The feature request associated with this model.
+        """
+        return self._feature_request
+
+    @property
+    def task(self) -> Optional[asyncio.Task]:
+        """
+        The task associated with this model, if any
+        """
+        return self._task
+
+    @property
+    def is_force(self) -> bool:
+        """
+        Whether or not the force flag was set for this request.
+        """
+        return self._force
+
+    @property
+    def is_retry_failed(self) -> bool:
+        """
+        Whether or not the retry failed flag was set for this request.
+        """
+        return self._retry_failed
 
     def get_status(self, recording: Path) -> str:
         """
@@ -271,7 +293,11 @@ class MultiRecordingModel:
             hash_calculator = self._hash_calculators.get(recording)
             progress = hash_calculator.progress if hash_calculator else 0
             return ModelState(status=DisplayStatus.HASHING, progress=progress)
-        if self.is_EXISTING_REQUESTS_CHECK() or self.is_EXISTING_OUTPUTS_CHECK():
+        if (
+            self.is_PAST_REQUESTS_CHECK()
+            or self.is_PAST_OUTPUTS_CHECK()
+            or self.is_SUCCESS_PAST_REQUEST()
+        ):
             return ModelState(status=DisplayStatus.CHECKING)
         if self.is_VALIDATION():
             return ModelState(status=DisplayStatus.HEALTHCHECK)
@@ -288,9 +314,9 @@ class MultiRecordingModel:
                     status=DisplayStatus.ENCRYPTING, progress=encryptor.progress
                 )
             return ModelState(status=DisplayStatus.CHECKING)
-        if self.is_SUBMIT():
+        if self.is_SUCCESS_NEW_REQUEST():
             return ModelState(status=DisplayStatus.SUBMITTING)
-        if self.is_SUCCESS():
+        if self.is_SUCCESS_PAST_OUTPUT():
             return ModelState(status=DisplayStatus.SUCCESS)
         if self.is_FAILURE():
             return ModelState(
@@ -311,7 +337,7 @@ class MultiRecordingModel:
         logger.debug(f"has_error : {self._error_codes}")
         return bool(self._error_codes)
 
-    async def on_enter_EXISTING_OUTPUTS_CHECK(self, event: EventData) -> None:
+    async def on_enter_PAST_OUTPUTS_CHECK(self, event: EventData) -> None:
         logger.debug(event)
         if self._force:
             logger.info("Force flag is enabled, skipping pre-existing outputs check")
@@ -339,7 +365,9 @@ class MultiRecordingModel:
         logger.debug(event)
         hash_calculation_tasks: List[asyncio.Task] = []
         for rec in self._recordings:
-            self._hash_calculators[rec.path] = HashCalculator(rec.path, self._suffix)
+            self._hash_calculators[rec.path] = await HashCalculator.get(
+                rec.path, self._suffix
+            )
             hash_calculation_tasks.append(
                 asyncio.create_task(self._hash_calculators[rec.path].run())
             )
@@ -358,7 +386,7 @@ class MultiRecordingModel:
         await self.next()
         self._hash_calculators = {}  # TODO: use before/after callback to clean up
 
-    async def on_enter_EXISTING_REQUESTS_CHECK(self, event: EventData) -> None:
+    async def on_enter_PAST_REQUESTS_CHECK(self, event: EventData) -> None:
         logger.debug(event)
         if self._force:
             logger.info("Force flag is enabled, skipping pre-existing requests check")
@@ -379,10 +407,7 @@ class MultiRecordingModel:
                 logger.info(
                     "Found an existing feature request with the same file hash. Skipping submission."
                 )
-                self._request_monitor.track_feature_request(
-                    recordings=self._recordings,
-                    feature_request=mps_feature_request,
-                )
+                self._feature_request = mps_feature_request
                 await self.finish()
 
     async def on_enter_VALIDATION(self, event: EventData) -> None:
@@ -394,7 +419,11 @@ class MultiRecordingModel:
                     f"Health check output already exists at {rec.health_check_path}, skipping VrsHealthCheck"
                 )
             else:
-                await run_health_check(rec.path, rec.health_check_path)
+                vhc_runner: HealthCheckRunner = await HealthCheckRunner.get(
+                    vrs_path=rec.path,
+                    json_out=rec.health_check_path,
+                )
+                await vhc_runner.run()
             if not rec.health_check_path.is_file():
                 logger.error("Failed to run VrsHealthCheck for {rec.path}")
                 self._error_codes[rec.path] = ErrorCode.HEALTH_CHECK_FAILURE
@@ -439,7 +468,7 @@ class MultiRecordingModel:
                         f"Encrypted file already exists at {rec.encrypted_path}, skipping encryption"
                     )
                 else:
-                    self._encryptors[rec.path] = VrsEncryptor(
+                    self._encryptors[rec.path] = await VrsEncryptor.get(
                         rec.path,
                         rec.encrypted_path,
                         self._encryption_key,
@@ -451,7 +480,7 @@ class MultiRecordingModel:
                     self._error_codes[rec.path] = ErrorCode.ENCRYPTION_FAILURE
                     raise EncryptionError()
 
-                self._uploaders[rec.path] = Uploader(
+                self._uploaders[rec.path] = await Uploader.get(
                     rec.encrypted_path, rec.file_hash, self._http_helper
                 )
                 if rec.path in self._encryptors:
@@ -478,26 +507,20 @@ class MultiRecordingModel:
             ## Note that the pending tasks continue to run in the background
             pass
 
-        await self.next()
+        await self.finish()
         self._uploaders = {}  # TODO: Do this in before/after callback
 
-    async def on_enter_SUBMIT(self, event: EventData) -> None:
+    async def on_enter_SUCCESS_NEW_REQUEST(self, event: EventData) -> None:
         logger.debug(event)
-        assert all(rec.fbid for rec in self._recordings)
-        mps_request: MpsRequest = await self._http_helper.submit_request(
-            name=f"{self._feature.value} request",
-            recording_ids=[rec.fbid for rec in self._recordings],
-            features=[self._feature.value],  # TODO: match names with server side
-        )
-        self._request_monitor.track_feature_request(
-            recordings=self._recordings,
-            feature_request=mps_request.features[self._feature],
-        )
+        logger.debug(f"Finished processing {self.state}")
 
-        await self.finish()
-
-    async def on_enter_SUCCESS(self, event: EventData) -> None:
+    async def on_enter_SUCCESS_PAST_OUTPUT(self, event: EventData) -> None:
         logger.debug(event)
+        logger.debug(f"Finished processing {self.state}")
+
+    async def on_enter_SUCCESS_PAST_REQUEST(self, event: EventData) -> None:
+        logger.debug(event)
+        logger.debug(f"Finished processing {self.state}")
 
     async def on_enter_FAILURE(self, event: EventData) -> None:
         logger.critical(event)
@@ -528,12 +551,11 @@ class MultiRecordingModel:
             # Backup error code based on state.
             # These are only used if the current error code is None
             state_to_error: Dict[MultiRecordingRequest.States, ErrorCode] = {
-                MultiRecordingRequest.States.EXISTING_OUTPUTS_CHECK.name: ErrorCode.EXISTING_OUTPUTS_CHECK_FAILURE,
+                MultiRecordingRequest.States.PAST_OUTPUTS_CHECK.name: ErrorCode.PAST_OUTPUTS_CHECK_FAILURE,
                 MultiRecordingRequest.States.HASH_COMPUTATION.name: ErrorCode.HASH_COMPUTATION_FAILURE,
-                MultiRecordingRequest.States.EXISTING_REQUESTS_CHECK.name: ErrorCode.EXISTING_REQUESTS_CHECK_FAILURE,
+                MultiRecordingRequest.States.PAST_REQUESTS_CHECK.name: ErrorCode.PAST_REQUESTS_CHECK_FAILURE,
                 MultiRecordingRequest.States.VALIDATION.name: ErrorCode.HEALTH_CHECK_FAILURE,
                 MultiRecordingRequest.States.UPLOAD.name: ErrorCode.UPLOAD_FAILURE,
-                MultiRecordingRequest.States.SUBMIT.name: ErrorCode.SUBMIT_FAILURE,
             }
             for rec in self._recordings:
                 self._error_codes[rec.path] = state_to_error.get(

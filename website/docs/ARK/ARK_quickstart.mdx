@@ -1,5 +1,5 @@
 ---
-sidebar_position: 20
+sidebar_position: 40
 title: Aria Glasses Quickstart
 ---
 import Tabs from '@theme/Tabs';
@@ -16,11 +16,11 @@ This page provides a quick overview of what to do once you have received your Pr
 
 ## Get set up
 
-Once you've been approved and can receive your Aria glasses you will get two emails:
+Once you've been approved and can receive your Aria glasses you will get the following emails:
 
 * Welcome to Aria
     * Contains your account details, use these for signing into the Mobile and Desktop Companion apps
-* Join [Person] in Project Aria Academic Partner Announcements, Feedback & Support
+* [Academic Partners only] Join Project Aria Academic Partner Announcements, Feedback & Support
     * Follow the prompts to join Aria's research community space where researchers and engineers at Meta and all our Academic partners can connect, ask questions, share ideas and provide support.
     * See [How to join the Academic Partner Workplace group](workplacegroup.mdx) for further instructions.
 
@@ -35,7 +35,11 @@ Before your glasses arrive we encourage you to join the [Academic Partners Workp
 * [Technical Specifications](/docs/tech_spec/tech_spec.mdx)
     * Go to the Tech Spec part of the wiki to find out about Aria capabilities, recording profiles etc
 * [Glasses Manual](/docs/ARK/glasses_manual/glasses_user_manual.mdx)
-    * Provides information about Project Aria glasses buttons, powering on and off, the privacy switch, how to do a factory reset, LED states, etc
+    * Information about Project Aria glasses buttons, powering on and off, the privacy switch, how to do a factory reset, LED states, etc
+* [Recording Profiles](/tech_spec/recording_profiles.mdx)
+    * Information and guidance about recording profiles and how to create Custom Profiles
+* [Aria Cable Clip](/ARK/glasses_manual/cable_clip.mdx)
+    * Project Aria can provide a cable to securely connect the charge cable to the glasses. This can be helpful if using a battery pack while recording
 
 
 <ThemedImage
@@ -62,29 +66,39 @@ Follow the instructions in the [ARK SW Downloads and Updates page](/docs/ARK/ark
     * Your glasses are automatically updated when you first pair them
     * Go to the [Mobile app page](/docs/ARK/mobile_companion_app.mdx) for further information
 
-Further updates will be queued automatically when you use your glasses via the Mobile Companion App. If you need to manually check for updates, select the gear icon (settings) next to your glasses and then select Check for OS Updates.
+Further updates will be queued automatically when you use your glasses via the Mobile Companion App. If you need to manually check for updates, select Device Settings and then select **Check for OS Updates**.
+
+### To view Device Settings
+Tap the Paired Glasses info card.
+
+<div style={{textAlign: 'center'}}>
+<img width="80%" src={useBaseUrl('/img/ARK/mobile_app_device_settings.png')} alt="Device Settings page from the Dashboard"/>
+</div>
 
 ## Set your Default Recording Profile
 
-You can set the default recording profile via Mobile or Desktop Companion App. Once set, this is the default profile used when recording or streaming data by any means.
+You can set the default recording profile via Mobile or Desktop Companion App. Once set, this is the default profile used when recording or streaming data.
 
-When you select New Recording in the Mobile Companion app, you'll initially see the default recording profile. Select the recording profile to view sensor settings or to select a different recording profile.
+When you select **New Recording** in the Mobile Companion app, tap Recording profile to view sensor settings or to select a different recording profile. Recording profile options include a custom profile where you can alter which sensors are used and how.
 
-In the Mobile Companion App, you can change the Default Recording Profile at any time via Device Settings (select the settings/gear icon next to your glasses on the dashboard).
+You can change the Default Recording Profile when selecting recording profiles or from Device Settings.
 
-![Device Settings](/img/ARK/mobile_app_device_settings.png)
 
-## Install the Desktop app (Optional)
+## Install Project Aria Tools (optional)
 
-You need the Desktop app to request Machine Perception Services, but you don't need the  app to make recordings or download data. The app provides a visualization of streaming data over Wi-Fi, but it doesn't have the capabilities of the Client SDK and you can't subscribe to the data. Go to the [Desktop app page](desktop_companion_app.mdx) for more information.
-
-Follow the instructions in the [ARK SW Downloads and Updates page](/docs/ARK/ark_downloads) to download and install the app (this is where you'll download updates as well).
+The [MPS CLI](/ARK/mps/request_mps/mps_cli.mdx) is the preferred way to request [Machine Perception Services](/ARK/mps/mps.mdx) on your data. Install Project Aria Tools via [virtual environment](/data_utilities/installation/installation_python.mdx) to be able to use the MPS CLI. You can only request Multi-SLAM MPS via the CLI.
 
 ## Install Client SDK and CLI (optional)
 
 Once you've set up your glasses with the Mobile Companion app, researchers can use the Client SDK or CLI to directly interact with Aria glasses. This is particularly helpful for streaming and subscribing to sensor data.
 
 Go to the [Client SDK and CLI section](/docs/ARK/sdk) for how to install the SDK and explore code samples.
+
+## Install the Desktop app (optional)
+
+The Desktop app is an alternative way to request Machine Perception Services or download data. The app provides a visualization of streaming data over Wi-Fi, but it doesn't have the capabilities of the Client SDK and you can't subscribe to the data. Go to the [Desktop app page](desktop_companion_app.mdx) for more information.
+
+Follow the instructions in the [ARK SW Downloads and Updates page](/docs/ARK/ark_downloads) to download and install the app (this is where you'll download updates as well).
 
 ## Record Data
 
@@ -186,9 +200,9 @@ adb pull /sdcard/recording/myVrsFile.json /home/unixname/MyVRSFolder/
 
 ## Streaming
 
-Install the [CLient SDK](/docs/ARK/sdk/sdk.mdx) to stream Aria data.
+Install the [Client SDK](/docs/ARK/sdk/sdk.mdx) to stream Aria data.
 
 ### Access basic visualization
-Through the Desktop app, you can view streaming data, however it does not have the capabilities of the Client SDK and you can't subscribe to the data. When using the Desktop app, we recommend only using Profiles 12 and 18, which are optimized for streaming.
+Through the Desktop app, you can view streaming data, however it does not have the capabilities of the Client SDK and you can't subscribe to the data. When streaming data, we recommend only using Profiles 12 and 18, which are optimized for streaming.
 
 Go to the [Desktop app page](/docs/ARK/desktop_companion_app.mdx#streaming) for detailed instructions.
