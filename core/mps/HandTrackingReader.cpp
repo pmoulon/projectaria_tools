@@ -96,14 +96,10 @@ WristAndPalmPoses readWristAndPalmPosesV2(const std::string& filepath) {
 
     while (true) {
       bool read_success = false;
-      leftWristAndPalmPose.wristAndPalmNormal_device =
-          WristAndPalmPose::OneSide::WristAndPalmNormals{
-              .palmNormal_device = Eigen::Vector3d::Zero(),
-              .wristNormal_device = Eigen::Vector3d::Zero()};
-      rightWristAndPalmPose.wristAndPalmNormal_device =
-          WristAndPalmPose::OneSide::WristAndPalmNormals{
-              .palmNormal_device = Eigen::Vector3d::Zero(),
-              .wristNormal_device = Eigen::Vector3d::Zero()};
+      leftWristAndPalmPose.wristAndPalmNormal_device = 
+          rightWristAndPalmPose.wristAndPalmNormal_device = {
+              Eigen::Vector3d::Zero(),
+              Eigen::Vector3d::Zero()};
       read_success = csv.read_row(
           tracking_timestamp_us,
           leftWristAndPalmPose.confidence,

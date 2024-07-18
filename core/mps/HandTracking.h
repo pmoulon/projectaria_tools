@@ -35,11 +35,11 @@ enum class HANDEDNESS { LEFT = 0, RIGHT = 1 };
 struct WristAndPalmPose {
   struct OneSide {
     double confidence;
-    Eigen::Vector3d wristPosition_device;
-    Eigen::Vector3d palmPosition_device;
+    Eigen::Vector3d wristPosition_device = Eigen::Vector3d::Zero();
+    Eigen::Vector3d palmPosition_device = Eigen::Vector3d::Zero();
     struct WristAndPalmNormals {
-      Eigen::Vector3d palmNormal_device;
-      Eigen::Vector3d wristNormal_device;
+      Eigen::Vector3d palmNormal_device = Eigen::Vector3d::Zero();
+      Eigen::Vector3d wristNormal_device = Eigen::Vector3d::Zero();
     };
     std::optional<WristAndPalmNormals> wristAndPalmNormal_device;
   };
