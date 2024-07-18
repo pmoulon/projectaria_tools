@@ -46,15 +46,6 @@ jobs:
           cd core/examples
           # Install dependencies used by the notebooks
           pip3 install jupyter matplotlib tqdm pillow plotly
-          # Install additional required dependencies to download content
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            sudo apt-get install -y curl unzip
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            brew install curl unzip
-          else
-            echo "$RUNNER_OS not supported"
-            exit 1
-          fi
 
           # Running the notebooks
           jupyter nbconvert --execute --inplace dataprovider_quickstart_tutorial.ipynb
